@@ -90,6 +90,7 @@ package.json               Test commands / Playwright dev dependency
 tests/verify-caffeine.mjs  Unit/invariant tests
 tests/verify-browser.mjs   Browser integration tests with deterministic clock
 .github/workflows/test.yml GitHub Actions test workflow
+research/                  Pharmacokinetic research basis and source links
 ```
 
 ## Running locally
@@ -136,3 +137,9 @@ Data is stored only under these browser keys:
 - `caffeine-halflife`
 
 If localStorage is unavailable, the app continues to work for the current session without persistence.
+
+## Research provenance
+
+The pharmacokinetic assumptions used by this project are documented in [`research/README.md`](research/README.md), with the literature links cited by the original 32-page Deep Research report preserved in [`research/SOURCES.md`](research/SOURCES.md).
+
+The exact PDF reviewed during development is identified there by filename and SHA-256 so a future copy can be verified against the same source material.
