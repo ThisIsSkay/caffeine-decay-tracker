@@ -1,10 +1,12 @@
 {
   "name": "caffeine-decay-tracker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Browser-based caffeine intake tracker with exponential decay calculation.",
+  "description": "Browser-based caffeine intake tracker with first-order decay and research-based sensitivity views.",
   "scripts": {
-    "test": "node tests/verify-caffeine.mjs"
+    "test": "npm run test:unit && npm run test:browser",
+    "test:unit": "node tests/verify-caffeine.mjs",
+    "test:browser": "node tests/verify-browser.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.1"
