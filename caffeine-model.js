@@ -2,125 +2,203 @@
  *
  * Pure functions — no DOM, no side-effects, independently testable.
  *
- * Model: first-order exponential elimination.
+ * Default amount-remaining model:
+ *   one-compartment, first-order elimination
  *   remaining = dose × 0.5 ^ (elapsed_hours / half_life_hours)
  *
  * Each dose decays independently from its own intake timestamp.
- * Instantaneous absorption is assumed (no absorption curve yet).
+ * Instantaneous absorption is intentionally used for the simple “mg remaining”
+ * view. Biological uncertainty is represented separately with sensitivity
+ * trajectories rather than hidden inside the deterministic formula.
  */
 
-// ── Validation ──────────────────────────────────────────────────
+var DEFAULT_HALF_LIFE_HOURS = 5;
+var SENSITIVITY_FAST_HOURS = 3;
+var SENSITIVITY_SLOW_HOURS = 8;
+var LITERATURE_HALF_LIFE_MIN_HOURS = 1.5;
+var LITERATURE_HALF_LIFE_MAX_HOURS = 9.5;
+var DOSE_MAX = 5000;
 
-const HALF_LIFE_MIN = 0.5;
-const HALF_LIFE_MAX = 24;
-const DOSE_MAX = 5000;
-
-function isFinitePositive(n) {
-  return typeof n === "number" && Number.isFinite(n) && n > 0;
+function isFiniteNumber(n) {
+  return typeof n === "number" && Number.isFinite(n);
 }
 
-function validateHalfLife(h) {
-  if (!isFinitePositive(h)) return false;
-  return h >= HALF_LIFE_MIN && h <= HALF_LIFE_MAX;
+function validateHalfLife(hours) {
+  return isFiniteNumber(hours) && hours > 0;
 }
 
 function validateDose(mg) {
-  if (typeof mg !== "number" || !Number.isFinite(mg)) return false;
-  if (mg < 0) return false;
-  if (mg > DOSE_MAX) return false;
-  return true;
+  return isFiniteNumber(mg) && mg >= 0 && mg <= DOSE_MAX;
 }
 
-// ── Core calculation ────────────────────────────────────────────
+function validateTimestamp(timestamp) {
+  return isFiniteNumber(timestamp);
+}
 
-function calculateRemaining(doseMg, intakeTimestamp, nowTimestamp, halfLifeHours) {
+function calculateRemaining(doseMg, intakeTimestamp, queryTimestamp, halfLifeHours) {
   if (!validateDose(doseMg)) return null;
   if (!validateHalfLife(halfLifeHours)) return null;
-  if (typeof intakeTimestamp !== "number" || typeof nowTimestamp !== "number") return null;
-  if (!Number.isFinite(intakeTimestamp) || !Number.isFinite(nowTimestamp)) return null;
+  if (!validateTimestamp(intakeTimestamp) || !validateTimestamp(queryTimestamp)) return null;
 
   if (doseMg === 0) return 0;
 
-  var elapsedMs = nowTimestamp - intakeTimestamp;
+  var elapsedMs = queryTimestamp - intakeTimestamp;
   if (elapsedMs < 0) return 0;
 
-  var elapsedHours = elapsedMs / (1000 * 60 * 60);
+  var elapsedHours = elapsedMs / 3600000;
   return doseMg * Math.pow(0.5, elapsedHours / halfLifeHours);
 }
 
-function calculateTotalRemaining(entries, nowTimestamp, halfLifeHours) {
-  if (!validateHalfLife(halfLifeHours)) return null;
+function calculateTotalRemaining(entries, queryTimestamp, halfLifeHours) {
   if (!Array.isArray(entries)) return null;
+  if (!validateTimestamp(queryTimestamp) || !validateHalfLife(halfLifeHours)) return null;
 
   var total = 0;
   for (var i = 0; i < entries.length; i++) {
-    var e = entries[i];
-    var r = calculateRemaining(e.doseMg, e.intakeTimestamp, nowTimestamp, halfLifeHours);
-    if (r === null) return null;
-    total += r;
+    var entry = entries[i];
+    if (!entry || typeof entry !== "object") return null;
+    var remaining = calculateRemaining(
+      entry.doseMg,
+      entry.intakeTimestamp,
+      queryTimestamp,
+      halfLifeHours
+    );
+    if (remaining === null) return null;
+    total += remaining;
   }
   return total;
 }
 
-function calculateProjection(entries, timestamp, halfLifeHours) {
-  return calculateTotalRemaining(entries, timestamp, halfLifeHours);
+function calculateProjection(entries, queryTimestamp, halfLifeHours) {
+  return calculateTotalRemaining(entries, queryTimestamp, halfLifeHours);
 }
 
-// ── Daily total ─────────────────────────────────────────────────
+function calculateSensitivity(entries, queryTimestamp, selectedHalfLifeHours) {
+  var selected = calculateTotalRemaining(entries, queryTimestamp, selectedHalfLifeHours);
+  var fast = calculateTotalRemaining(entries, queryTimestamp, SENSITIVITY_FAST_HOURS);
+  var slow = calculateTotalRemaining(entries, queryTimestamp, SENSITIVITY_SLOW_HOURS);
+  if (selected === null || fast === null || slow === null) return null;
+
+  return {
+    selected: selected,
+    fast: fast,
+    slow: slow,
+    referenceLow: Math.min(fast, slow),
+    referenceHigh: Math.max(fast, slow),
+    selectedHalfLifeHours: selectedHalfLifeHours,
+    fastHalfLifeHours: SENSITIVITY_FAST_HOURS,
+    slowHalfLifeHours: SENSITIVITY_SLOW_HOURS
+  };
+}
+
+function getLocalDayBounds(referenceTimestamp) {
+  if (!validateTimestamp(referenceTimestamp)) return null;
+  var reference = new Date(referenceTimestamp);
+  if (!Number.isFinite(reference.getTime())) return null;
+
+  var start = new Date(
+    reference.getFullYear(),
+    reference.getMonth(),
+    reference.getDate(),
+    0, 0, 0, 0
+  ).getTime();
+  var end = new Date(
+    reference.getFullYear(),
+    reference.getMonth(),
+    reference.getDate() + 1,
+    0, 0, 0, 0
+  ).getTime();
+
+  return { start: start, end: end };
+}
 
 function calculateDailyConsumed(entries, nowTimestamp) {
-  if (!Array.isArray(entries)) return 0;
-
-  var now = new Date(nowTimestamp);
-  var startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  var endOfDay = startOfDay + 24 * 60 * 60 * 1000;
+  if (!Array.isArray(entries) || !validateTimestamp(nowTimestamp)) return 0;
+  var bounds = getLocalDayBounds(nowTimestamp);
+  if (!bounds) return 0;
 
   var total = 0;
   for (var i = 0; i < entries.length; i++) {
-    var ts = entries[i].intakeTimestamp;
-    if (ts >= startOfDay && ts < endOfDay) {
-      total += entries[i].doseMg || 0;
+    var entry = entries[i];
+    if (!entry || !validateDose(entry.doseMg) || !validateTimestamp(entry.intakeTimestamp)) continue;
+    if (entry.intakeTimestamp >= bounds.start &&
+        entry.intakeTimestamp < bounds.end &&
+        entry.intakeTimestamp <= nowTimestamp) {
+      total += entry.doseMg;
     }
   }
   return total;
 }
 
-// ── Projection series ───────────────────────────────────────────
+function calculateDailyEntryCount(entries, nowTimestamp) {
+  if (!Array.isArray(entries) || !validateTimestamp(nowTimestamp)) return 0;
+  var bounds = getLocalDayBounds(nowTimestamp);
+  if (!bounds) return 0;
+
+  var count = 0;
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i];
+    if (!entry || !validateTimestamp(entry.intakeTimestamp)) continue;
+    if (entry.intakeTimestamp >= bounds.start &&
+        entry.intakeTimestamp < bounds.end &&
+        entry.intakeTimestamp <= nowTimestamp) {
+      count++;
+    }
+  }
+  return count;
+}
 
 function generateProjectionSeries(entries, nowTimestamp, halfLifeHours, steps) {
-  if (!steps) steps = [0, 2, 4, 6, 8, 10, 12];
+  if (!Array.isArray(steps) || steps.length === 0) {
+    steps = [0, 2, 4, 6, 8, 10, 12];
+  }
+  if (!validateTimestamp(nowTimestamp) || !validateHalfLife(halfLifeHours)) return null;
+
   var series = [];
   for (var i = 0; i < steps.length; i++) {
-    var futureTs = nowTimestamp + steps[i] * 60 * 60 * 1000;
-    var remaining = calculateProjection(entries, futureTs, halfLifeHours);
-    if (remaining === null) return null;
+    var offset = Number(steps[i]);
+    if (!Number.isFinite(offset)) return null;
+    var timestamp = nowTimestamp + offset * 3600000;
+    var sensitivity = calculateSensitivity(entries, timestamp, halfLifeHours);
+    if (!sensitivity) return null;
     series.push({
-      offsetHours: steps[i],
-      timestamp: futureTs,
-      remaining: remaining
+      offsetHours: offset,
+      timestamp: timestamp,
+      remaining: sensitivity.selected,
+      fast: sensitivity.fast,
+      slow: sensitivity.slow,
+      referenceLow: sensitivity.referenceLow,
+      referenceHigh: sensitivity.referenceHigh
     });
   }
   return series;
 }
 
-// ── Chart data ──────────────────────────────────────────────────
-
 function generateChartData(entries, startTimestamp, endTimestamp, halfLifeHours, pointCount) {
-  if (!pointCount) pointCount = 200;
+  if (!validateTimestamp(startTimestamp) || !validateTimestamp(endTimestamp)) return null;
+  if (!validateHalfLife(halfLifeHours) || endTimestamp <= startTimestamp) return null;
+  if (!Number.isInteger(pointCount) || pointCount < 2) pointCount = 200;
+
   var step = (endTimestamp - startTimestamp) / pointCount;
   var points = [];
   for (var i = 0; i <= pointCount; i++) {
-    var ts = startTimestamp + step * i;
-    var remaining = calculateTotalRemaining(entries, ts, halfLifeHours);
-    if (remaining === null) return null;
-    points.push({ timestamp: ts, remaining: remaining });
+    var timestamp = startTimestamp + step * i;
+    var sensitivity = calculateSensitivity(entries, timestamp, halfLifeHours);
+    if (!sensitivity) return null;
+    points.push({
+      timestamp: timestamp,
+      remaining: sensitivity.selected,
+      fast: sensitivity.fast,
+      slow: sensitivity.slow,
+      referenceLow: sensitivity.referenceLow,
+      referenceHigh: sensitivity.referenceHigh
+    });
   }
   return points;
 }
 
-// ── Elapsed formatting ──────────────────────────────────────────
-
 function formatElapsed(ms) {
+  if (!isFiniteNumber(ms)) return "—";
   if (ms < 0) return "not yet";
   var totalMinutes = Math.floor(ms / 60000);
   var hours = Math.floor(totalMinutes / 60);
@@ -129,21 +207,31 @@ function formatElapsed(ms) {
   return hours + "h " + minutes + "m";
 }
 
-// ── Exports (Node.js) / globals (browser) ───────────────────────
+var exported = {
+  DEFAULT_HALF_LIFE_HOURS: DEFAULT_HALF_LIFE_HOURS,
+  SENSITIVITY_FAST_HOURS: SENSITIVITY_FAST_HOURS,
+  SENSITIVITY_SLOW_HOURS: SENSITIVITY_SLOW_HOURS,
+  LITERATURE_HALF_LIFE_MIN_HOURS: LITERATURE_HALF_LIFE_MIN_HOURS,
+  LITERATURE_HALF_LIFE_MAX_HOURS: LITERATURE_HALF_LIFE_MAX_HOURS,
+  DOSE_MAX: DOSE_MAX,
+  validateHalfLife: validateHalfLife,
+  validateDose: validateDose,
+  validateTimestamp: validateTimestamp,
+  calculateRemaining: calculateRemaining,
+  calculateTotalRemaining: calculateTotalRemaining,
+  calculateProjection: calculateProjection,
+  calculateSensitivity: calculateSensitivity,
+  getLocalDayBounds: getLocalDayBounds,
+  calculateDailyConsumed: calculateDailyConsumed,
+  calculateDailyEntryCount: calculateDailyEntryCount,
+  generateProjectionSeries: generateProjectionSeries,
+  generateChartData: generateChartData,
+  formatElapsed: formatElapsed
+};
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = {
-    HALF_LIFE_MIN: HALF_LIFE_MIN,
-    HALF_LIFE_MAX: HALF_LIFE_MAX,
-    DOSE_MAX: DOSE_MAX,
-    validateHalfLife: validateHalfLife,
-    validateDose: validateDose,
-    calculateRemaining: calculateRemaining,
-    calculateTotalRemaining: calculateTotalRemaining,
-    calculateProjection: calculateProjection,
-    calculateDailyConsumed: calculateDailyConsumed,
-    generateProjectionSeries: generateProjectionSeries,
-    generateChartData: generateChartData,
-    formatElapsed: formatElapsed
-  };
+  module.exports = exported;
+}
+if (typeof window !== "undefined") {
+  window.CaffeineModel = exported;
 }
