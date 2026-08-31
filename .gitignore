@@ -1,13 +1,5 @@
-# OS junk
+node_modules/
+playwright-report/
+test-results/
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Editor
-.vscode/
-.idea/
-*.swp
-
-# Dependencies
-node_modules/
-package-lock.json

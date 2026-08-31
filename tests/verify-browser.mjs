@@ -1,268 +1,184 @@
-/**
- * Browser integration tests for the Caffeine Decay Tracker.
- * Verifies UI, calculations, persistence, and edge cases.
- *
- * Requires: Playwright, http-server running on BASE_URL
- * Usage: node tests/verify-browser.mjs
- */
-
 import { chromium } from "playwright";
+import http from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-var BASE = process.env.BASE_URL || "http://localhost:8781";
-var passed = 0;
-var failed = 0;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, "..");
+const port = Number(process.env.PORT || 8781);
+const base = `http://127.0.0.1:${port}`;
+
+let passed = 0;
+let failed = 0;
 
 function check(label, actual, expected, tolerance) {
-  if (tolerance !== undefined) {
-    if (typeof actual === "number" && typeof expected === "number" &&
-        Math.abs(actual - expected) <= tolerance) {
-      passed++;
-      console.log("  PASS  " + label);
-      return;
-    }
-  } else if (actual === expected) {
+  let ok = false;
+  if (typeof tolerance === "number") {
+    ok = typeof actual === "number" && Math.abs(actual - expected) <= tolerance;
+  } else {
+    ok = Object.is(actual, expected);
+  }
+  if (ok) {
     passed++;
     console.log("  PASS  " + label);
-    return;
+  } else {
+    failed++;
+    console.log("  FAIL  " + label);
+    console.log("        expected:", expected);
+    console.log("        actual:  ", actual);
   }
-  failed++;
-  console.log("  FAIL  " + label);
-  console.log("        expected: " + JSON.stringify(expected));
-  console.log("        actual:   " + JSON.stringify(actual));
 }
 
-var browser, context, page;
+const types = { ".html":"text/html", ".js":"text/javascript", ".css":"text/css" };
+const server = http.createServer(async (req, res) => {
+  try {
+    let pathname = new URL(req.url, base).pathname;
+    if (pathname === "/") pathname = "/index.html";
+    const filePath = path.resolve(root, "." + pathname);
+    if (!filePath.startsWith(root + path.sep)) throw new Error("bad path");
+    const data = await fs.readFile(filePath);
+    res.writeHead(200, { "content-type": types[path.extname(filePath)] || "application/octet-stream", "cache-control":"no-store" });
+    res.end(data);
+  } catch {
+    res.writeHead(404); res.end("Not found");
+  }
+});
 
+await new Promise(resolve => server.listen(port, "127.0.0.1", resolve));
+let browser;
 try {
-  browser = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-    args: ["--no-sandbox"]
-  });
-  context = await browser.newContext();
-  page = await context.newPage();
+  browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ timezoneId: "Asia/Singapore" });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", err => errors.push(err.message));
+  await page.clock.install({ time: new Date("2026-08-31T12:00:00+08:00") });
 
-  // Install a fake clock so tests are deterministic
-  // Aug 31 2026 12:00:00 local time
-  await page.clock.install({ time: new Date(2026, 7, 31, 12, 0, 0) });
+  console.log("\nPage load and defaults");
+  await page.goto(base);
+  check("page title", await page.title(), "Caffeine Decay Tracker");
+  check("default half-life", await page.inputValue("#halflife-input"), "5.0");
+  check("empty hero visible", await page.isVisible("#hero-empty"), true);
+  check("empty intake message visible", await page.isVisible("#empty-intakes"), true);
 
-  // ── Test: Page loads ──────────────────────────────────────
-  console.log("\nPage load");
-  await page.goto(BASE);
-  var title = await page.title();
-  check("Page title", title, "Caffeine Decay Tracker");
-
-  var heroText = await page.textContent("#hero-empty");
-  check("Empty state message shown", heroText.trim(), "Add your first caffeine intake below");
-
-  // ── Test: Half-life default ───────────────────────────────
-  console.log("\nHalf-life");
-  var hlValue = await page.$eval("#halflife-input", function (el) { return el.value; });
-  check("Default half-life is 5.0", hlValue, "5.0");
-
-  // ── Test: Add first intake ────────────────────────────────
-  console.log("\nAdd intake");
+  console.log("\nTwo-dose calculation");
   await page.fill("#input-amount", "200");
+  await page.fill("#input-date", "2026-08-31");
   await page.fill("#input-time", "08:00");
-  await page.fill("#input-date", "2026-08-31");
-  await page.fill("#input-label", "Morning Coffee");
+  await page.fill("#input-label", "Morning coffee");
   await page.click(".btn-add");
 
-  // At 12:00 with 200mg taken at 08:00, half-life 5h:
-  // elapsed = 4h, remaining = 200 × 0.5^(4/5) = 200 × 0.5^0.8
-  var expected1 = 200 * Math.pow(0.5, 4 / 5);
-  var heroVal = await page.textContent("#hero-value");
-  var heroNum = parseFloat(heroVal);
-  check("Hero shows correct remaining after 1 intake",
-    heroNum, expected1, 0.5);
-
-  // Check daily consumed
-  var consumed = await page.textContent("#daily-consumed");
-  check("Daily consumed = 200", consumed.trim(), "200");
-
-  // Check intake appears in list
-  var intakeItems = await page.$$(".intake-item");
-  check("1 intake in list", intakeItems.length, 1);
-
-  // ── Test: Add second intake ───────────────────────────────
-  console.log("\nSecond intake");
   await page.fill("#input-amount", "150");
+  await page.fill("#input-date", "2026-08-31");
   await page.fill("#input-time", "10:00");
-  await page.fill("#input-date", "2026-08-31");
-  await page.fill("#input-label", "");
   await page.click(".btn-add");
 
-  // Dose A: 200 × 0.5^(4/5) ≈ 114.87
-  // Dose B: 150 × 0.5^(2/5) ≈ 113.56
-  var expectedA = 200 * Math.pow(0.5, 4 / 5);
-  var expectedB = 150 * Math.pow(0.5, 2 / 5);
-  var expectedTotal = expectedA + expectedB;
+  const expected = 200 * Math.pow(0.5, 4/5) + 150 * Math.pow(0.5, 2/5);
+  check("hero sums doses independently", parseFloat(await page.textContent("#hero-value")), expected, 0.05);
+  check("daily consumed is 350", (await page.textContent("#daily-consumed")).trim(), "350");
+  check("daily entry count is 2", (await page.textContent("#daily-entries")).trim(), "2");
+  check("two intake rows", await page.locator(".intake-item").count(), 2);
 
-  heroVal = await page.textContent("#hero-value");
-  heroNum = parseFloat(heroVal);
-  check("Hero shows correct total after 2 intakes",
-    heroNum, expectedTotal, 0.5);
+  const fast = 200 * Math.pow(0.5, 4/3) + 150 * Math.pow(0.5, 2/3);
+  const slow = 200 * Math.pow(0.5, 4/8) + 150 * Math.pow(0.5, 2/8);
+  const rangeText = await page.textContent("#hero-range");
+  check("hero shows research sensitivity label", rangeText.includes("Adult sensitivity reference (3–8 h)"), true);
+  check("hero range includes rounded fast result", rangeText.includes(fast.toFixed(1)), true);
+  check("hero range includes rounded slow result", rangeText.includes(slow.toFixed(1)), true);
 
-  consumed = await page.textContent("#daily-consumed");
-  check("Daily consumed = 350", consumed.trim(), "350");
-
-  intakeItems = await page.$$(".intake-item");
-  check("2 intakes in list", intakeItems.length, 2);
-
-  // ── Test: Edit intake ─────────────────────────────────────
-  console.log("\nEdit intake");
-  var editBtn = await page.$('.btn-icon[data-action="edit"]');
-  await editBtn.click();
-
-  // Modal should be visible
-  var modalVisible = await page.$eval("#edit-modal", function (el) {
-    return el.classList.contains("visible");
-  });
-  check("Edit modal opens", modalVisible, true);
-
-  // Change amount to 300
-  await page.fill("#edit-amount", "300");
-  await page.click("#modal-save");
-
-  modalVisible = await page.$eval("#edit-modal", function (el) {
-    return el.classList.contains("visible");
-  });
-  check("Edit modal closes after save", modalVisible, false);
-
-  consumed = await page.textContent("#daily-consumed");
-  check("Daily consumed updated to 500", consumed.trim(), "500");
-
-  // ── Test: Delete intake ───────────────────────────────────
-  console.log("\nDelete intake");
-  var deleteBtn = await page.$('.btn-icon[data-action="delete"]');
-  await deleteBtn.click();
-
-  intakeItems = await page.$$(".intake-item");
-  check("1 intake after delete", intakeItems.length, 1);
-
-  // ── Test: Change half-life ────────────────────────────────
-  console.log("\nChange half-life");
-  var heroBefore = parseFloat(await page.textContent("#hero-value"));
-
-  await page.click("#hl-dec"); // 5.0 -> 4.5
-  hlValue = await page.$eval("#halflife-input", function (el) { return el.value; });
-  check("Half-life decreased to 4.5", hlValue, "4.5");
-
-  var heroAfter = parseFloat(await page.textContent("#hero-value"));
-  check("Remaining changed after half-life change", heroBefore !== heroAfter, true);
-
-  // Reset to 5.0
-  await page.click("#hl-inc");
-
-  // ── Test: Future entry ────────────────────────────────────
-  console.log("\nFuture entry");
-  await page.fill("#input-amount", "200");
+  console.log("\nFuture dose semantics");
+  await page.fill("#input-amount", "75");
+  await page.fill("#input-date", "2026-08-31");
   await page.fill("#input-time", "14:00");
-  await page.fill("#input-date", "2026-08-31");
-  await page.fill("#input-label", "Afternoon");
+  await page.fill("#input-label", "Scheduled");
   await page.click(".btn-add");
+  check("future dose shows Scheduled", (await page.textContent(".intake-future")).trim(), "Scheduled");
+  check("future dose excluded from consumed today", (await page.textContent("#daily-consumed")).trim(), "350");
+  check("future dose excluded from completed entry count", (await page.textContent("#daily-entries")).trim(), "2");
+  check("hero still excludes future dose", parseFloat(await page.textContent("#hero-value")), expected, 0.05);
 
-  // The future dose should show "Scheduled" in the list
-  var futureText = await page.textContent(".intake-future");
-  check("Future entry shows Scheduled", futureText.trim(), "Scheduled");
+  console.log("\nDecimal dose and editing");
+  const scheduledEdit = page.locator('.intake-item').filter({ hasText: "Scheduled" }).locator('[data-action="edit"]');
+  await scheduledEdit.click();
+  await page.fill("#edit-amount", "62.5");
+  await page.fill("#edit-time", "11:00");
+  await page.click("#modal-save");
+  check("decimal dose preserved", (await page.locator(".intake-dose").first().textContent()).includes("62.5 mg"), true);
+  check("edited past dose now counts today", parseFloat(await page.textContent("#daily-consumed")), 412.5, 1e-9);
 
-  // Hero should not include the future dose
-  // Only the remaining entry (200mg at 08:00) should contribute
-  heroVal = await page.textContent("#hero-value");
-  heroNum = parseFloat(heroVal);
-  var expectedWithoutFuture = 200 * Math.pow(0.5, 4 / 5);
-  check("Future dose does not inflate hero value",
-    heroNum, expectedWithoutFuture, 0.5);
+  console.log("\nHalf-life changes and validation");
+  const before = parseFloat(await page.textContent("#hero-value"));
+  await page.fill("#halflife-input", "8");
+  await page.locator("#halflife-input").blur();
+  check("custom half-life applied", await page.inputValue("#halflife-input"), "8.0");
+  const after = parseFloat(await page.textContent("#hero-value"));
+  check("longer half-life increases remaining", after > before, true);
+  await page.fill("#halflife-input", "0");
+  await page.locator("#halflife-input").blur();
+  check("invalid half-life resets to last valid", await page.inputValue("#halflife-input"), "8.0");
+  check("invalid half-life produces message", await page.isVisible("#halflife-error"), true);
 
-  // ── Test: localStorage persistence ────────────────────────
-  console.log("\nPersistence");
-
-  // Reload the page (same fake clock)
+  console.log("\nPersistence and invalid stored data");
   await page.reload();
-  await page.waitForSelector("#hero-value");
+  check("entries persist", await page.locator(".intake-item").count(), 3);
+  check("half-life persists", await page.inputValue("#halflife-input"), "8.0");
 
-  intakeItems = await page.$$(".intake-item");
-  check("Entries persist after reload", intakeItems.length, 2);
-
-  hlValue = await page.$eval("#halflife-input", function (el) { return el.value; });
-  check("Half-life persists after reload", hlValue, "5.0");
-
-  // ── Test: Corrupted localStorage ──────────────────────────
-  console.log("\nCorrupted storage");
-  await page.evaluate(function () {
-    localStorage.setItem("caffeine-entries", "NOT_VALID_JSON!!{[}");
+  await page.evaluate(() => {
+    localStorage.setItem("caffeine-entries", JSON.stringify([
+      { id:"bad", doseMg:999999, intakeTimestamp:Date.now(), label:"bad" },
+      { id:"good", doseMg:100, intakeTimestamp:Date.now(), label:"good" }
+    ]));
     localStorage.setItem("caffeine-halflife", "banana");
   });
   await page.reload();
-  await page.waitForSelector(".app");
+  check("valid JSON with invalid dose is filtered", await page.locator(".intake-item").count(), 1);
+  check("invalid stored half-life falls back to 5", await page.inputValue("#halflife-input"), "5.0");
+  check("remaining stored valid row is good", (await page.textContent(".intake-label-text")).trim(), "good");
 
-  intakeItems = await page.$$(".intake-item");
-  check("Corrupted entries → empty list", intakeItems.length, 0);
+  console.log("\nDelete-last empty state regression");
+  await page.click('[data-action="delete"]');
+  check("zero intake rows after last delete", await page.locator(".intake-item").count(), 0);
+  check("empty intake message visible after last delete", await page.isVisible("#empty-intakes"), true);
+  check("hero empty visible after last delete", await page.isVisible("#hero-empty"), true);
 
-  hlValue = await page.$eval("#halflife-input", function (el) { return el.value; });
-  check("Corrupted half-life → default 5.0", hlValue, "5.0");
-
-  // ── Test: Empty state after clear ─────────────────────────
-  console.log("\nEmpty state");
-  var emptyVis = await page.$eval("#hero-empty", function (el) {
-    return el.style.display !== "none";
-  });
-  check("Empty message visible with no entries", emptyVis, true);
-
-  // ── Test: Projection section exists ───────────────────────
-  console.log("\nProjection");
-  // Add an entry to see projections
+  console.log("\nProjection, chart, mobile");
   await page.fill("#input-amount", "200");
-  await page.fill("#input-time", "12:00");
   await page.fill("#input-date", "2026-08-31");
+  await page.fill("#input-time", "08:00");
   await page.click(".btn-add");
-
-  var projRows = await page.$$(".projection-row");
-  check("Projection rows rendered", projRows.length > 0, true);
-
-  var nowRow = await page.$(".projection-row.now");
-  check("Now row exists in projection", nowRow !== null, true);
-
-  // ── Test: Chart SVG has content ───────────────────────────
-  console.log("\nChart");
-  var chartContent = await page.$eval("#chart-svg", function (el) {
-    return el.innerHTML.length;
-  });
-  check("Chart SVG has content", chartContent > 0, true);
-
-  // ── Test: Mobile width ────────────────────────────────────
-  console.log("\nMobile viewport");
+  check("projection rows rendered", (await page.locator(".projection-row").count()) >= 6, true);
+  check("projection contains sensitivity references", (await page.textContent(".projection-range")).includes("3–8 h ref"), true);
+  check("chart selected line rendered", await page.locator("#chart-svg .chart-line").count(), 1);
+  check("chart reference lines rendered", await page.locator("#chart-svg .chart-line-reference").count(), 2);
   await page.setViewportSize({ width: 375, height: 667 });
-  await page.waitForTimeout(100);
+  check("no horizontal overflow at 375px", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
 
-  var bodyWidth = await page.evaluate(function () {
-    return document.body.scrollWidth;
-  });
-  var viewportWidth = await page.evaluate(function () {
-    return window.innerWidth;
-  });
-  check("No horizontal overflow at 375px", bodyWidth <= viewportWidth, true);
+  console.log("\nDST nonexistent local time validation");
+  const dstContext = await browser.newContext({ timezoneId: "America/New_York" });
+  const dstPage = await dstContext.newPage();
+  await dstPage.clock.install({ time: new Date("2026-03-08T12:00:00-04:00") });
+  await dstPage.goto(base);
+  await dstPage.fill("#input-amount", "100");
+  await dstPage.fill("#input-date", "2026-03-08");
+  await dstPage.fill("#input-time", "02:30");
+  await dstPage.click(".btn-add");
+  check("spring-forward nonexistent 02:30 rejected", await dstPage.isVisible("#form-error"), true);
+  check("no row created for nonexistent time", await dstPage.locator(".intake-item").count(), 0);
+  await dstContext.close();
 
-  // ── Test: Console errors ──────────────────────────────────
-  console.log("\nConsole errors");
-  var errors = [];
-  page.on("pageerror", function (err) { errors.push(err.message); });
-  await page.setViewportSize({ width: 1024, height: 768 });
-  await page.reload();
-  await page.waitForSelector(".app");
-  check("No JS errors on page", errors.length, 0);
-
-} catch (err) {
-  console.error("Test runner error:", err);
+  check("no uncaught JS page errors", errors.length, 0);
+  await context.close();
+} catch (error) {
+  console.error("Browser test runner error:", error);
   failed++;
 } finally {
   if (browser) await browser.close();
+  await new Promise(resolve => server.close(resolve));
 }
 
-console.log("\n" + "─".repeat(50));
-console.log("Results: " + passed + " passed, " + failed + " failed");
-if (failed > 0) {
-  console.log("SOME TESTS FAILED");
-  process.exit(1);
-} else {
-  console.log("ALL TESTS PASSED");
-}
+console.log("\n" + "─".repeat(58));
+console.log(`Results: ${passed} passed, ${failed} failed`);
+if (failed) process.exit(1);
+console.log("ALL BROWSER TESTS PASSED");

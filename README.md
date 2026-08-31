@@ -1,177 +1,138 @@
 # Caffeine Decay Tracker
 
-A lightweight, browser-based caffeine intake tracker that estimates how much caffeine remains in your body using an exponential decay model. No backend, no login, no database — all data stays in your browser.
+A lightweight browser app that records caffeine dose events and estimates how much **parent caffeine remains** under a configurable first-order pharmacokinetic model.
 
-**Live site:** [https://thisisskay.github.io/caffeine-decay-tracker/](https://thisisskay.github.io/caffeine-decay-tracker/)
+**Live site:** https://thisisskay.github.io/caffeine-decay-tracker/
+
+No backend, account, analytics, telemetry, CDN, or remote API is used. Intake records and settings stay in browser `localStorage`.
 
 ## What it does
 
-- Record caffeine intakes with amount, time, date, and optional label
-- See your **estimated caffeine remaining** in real time
-- View a projection of future caffeine levels
-- Track daily consumption totals
-- Configure your personal caffeine half-life
-- Visualise the decay curve on a timeline chart
+- Record caffeine amount, local date/time, and an optional label
+- Sum overlapping doses correctly by calculating every dose independently
+- Show the selected-model estimate in mg
+- Show a **3–8 hour adult sensitivity reference** alongside the selected result
+- Project future values using the same calculation engine
+- Plot the selected trajectory plus 3 h / 8 h reference trajectories
+- Track caffeine actually consumed today (future scheduled events do not count until their time arrives)
+- Edit/delete entries and persist them across reloads
+- Handle local calendar boundaries, including 23-hour and 25-hour DST days
 
-## Caffeine calculation
+## Model
 
-### Formula
+### Simple amount-remaining mode
 
-For a single dose:
+The default model is a one-compartment, first-order elimination model with instantaneous absorption for the simple **mg remaining** view:
 
-```
-remaining = dose × 0.5 ^ (elapsed_hours / half_life_hours)
-```
-
-Where:
-- `dose` is the caffeine amount in milligrams
-- `elapsed_hours` is the time since intake in hours (calculated from millisecond-precision timestamps)
-- `half_life_hours` is the user-configured half-life (default: 5.0 hours)
-
-### Multiple doses
-
-Each caffeine intake decays independently from its own intake timestamp. The total estimated caffeine remaining is the sum of all individual remaining amounts:
-
-```
-total = remaining(dose_1) + remaining(dose_2) + ... + remaining(dose_n)
+```text
+remaining = dose × 0.5^(elapsed_hours / half_life_hours)
 ```
 
-Doses are **never** combined into a single starting amount. Every dose tracks its own elapsed time.
+For arbitrary repeated doses:
 
-### Future intakes
-
-A dose scheduled in the future contributes 0 mg until its intake time is reached. It never produces negative elapsed time or values exceeding the original dose.
-
-## Model assumptions
-
-1. **Instantaneous absorption.** Each dose becomes fully available at the recorded intake timestamp. No absorption curve is modelled.
-2. **First-order exponential decay.** Caffeine elimination follows `remaining = dose × 0.5^(t/t½)`.
-3. **Single half-life.** One user-selected half-life applies to all doses.
-4. **Estimate, not measurement.** The result is an estimate of caffeine remaining, not a measured blood concentration.
-5. **Individual variation.** Real caffeine pharmacokinetics vary between people and circumstances — age, weight, genetics, pregnancy, medications, smoking, liver metabolism, and other factors all affect actual half-life.
-6. **Pending research.** Biological assumptions (default half-life, absorption curves, individual variation) will be refined after separate research.
-
-## Half-life
-
-The default half-life of **5.0 hours** is a configurable model parameter, not a universally correct biological constant. Users can adjust it between 0.5 and 24 hours. Changing the half-life immediately recalculates all existing entries.
-
-## Privacy
-
-- All caffeine records are stored in browser `localStorage`
-- No data is sent to any server
-- No analytics, telemetry, or tracking
-- No external API calls
-- No CDN dependencies
-- Everything runs locally in your browser
-
-## Running locally
-
-Open `index.html` directly in a browser, or serve it:
-
-```
-npx http-server . -p 8080
+```text
+total(t) = Σ dose_i × 0.5^(-(t - t_i) / half_life)
+           for all dose events with t_i <= t
 ```
 
-Then visit `http://localhost:8080`.
+Each dose keeps its own timestamp. Doses are never merged into one starting amount.
 
-## Running tests
+### Default and uncertainty
 
-Tests verify the calculation engine independently of the UI:
+- Selected/default half-life: **5.0 h**
+- Practical adult fast sensitivity scenario: **3.0 h**
+- Practical adult slow sensitivity scenario: **8.0 h**
+- Broader healthy-person literature range reviewed for this project: approximately **1.5–9.5 h**
 
-```
-node tests/verify-caffeine.mjs
-```
+The 3–8 h display is deliberately labelled a **sensitivity reference**, not a confidence interval and not a personalized biological range. The selected half-life can be changed independently.
 
-No test framework required — runs with plain Node.js.
+Example: for a fully available 200 mg dose after 8 hours:
 
-### What the tests cover
+| Half-life model | Estimated parent caffeine remaining |
+|---|---:|
+| 3 h fast sensitivity | ~31.5 mg |
+| 5 h nominal | ~66.0 mg |
+| 8 h slow sensitivity | 100.0 mg |
 
-- Zero, one, two, and three half-lives elapsed
-- Fractional half-life intervals (e.g. 2.5 hours at half-life 5)
-- Multiple doses at same time
-- Different intake times with independently calculated results
-- Future entries contributing 0 mg
-- Entry exactly at intake timestamp
-- Invalid half-life values (0, negative, NaN, Infinity)
-- Invalid dose values (negative, NaN, Infinity; zero accepted as valid)
-- Cross-midnight calculations
-- Fractional minutes/seconds precision
-- Multiple doses including future entries
-- Projection including/excluding future intakes
-- Daily consumed totals excluding previous days
-- Empty entries
-- Various half-life values
-- Validation bounds
-- Elapsed time formatting
-- Invalid entries arrays
-- Projection series generation
-- Invalid timestamps
+The point of showing the sensitivity view is that uncertainty in a person's true elimination rate can matter more than arithmetic precision in the decay equation.
+
+## Why absorption is still instantaneous here
+
+The research basis reviewed for this project supports first-order oral absorption (Bateman-function modelling) when estimating early **concentration-time** behaviour. It also supports the simpler instantaneous model as a practical default for **amount remaining in mg**, especially once the main absorption phase has passed.
+
+This version therefore keeps the simple amount-remaining model intentionally. A future advanced concentration mode could add body weight, apparent distribution volume, bioavailability, and an absorption rate without changing the simple mode.
+
+## Important modelling boundaries
+
+- This estimates **parent caffeine remaining under a mathematical model**, not measured blood caffeine concentration.
+- It does not model caffeine metabolites such as paraxanthine.
+- First-order elimination is an approximation. Human data show some dose dependence at higher exposure, but there is no universal Michaelis–Menten parameter set suitable as the default consumer model.
+- Smoking, pregnancy, estrogen-containing oral contraceptives, liver dysfunction, drug interactions, and other factors can materially alter caffeine clearance. This app does not multiply such factors together or pretend to infer a personalized half-life from them.
+- A manually selected half-life is a model parameter, not a measurement of the user's actual pharmacokinetics.
+
+## Date/time behaviour
+
+- Intake date/time is interpreted in the browser's local timezone.
+- Elapsed time uses millisecond timestamps, so fractional minutes and seconds are retained in the calculation.
+- Future events contribute 0 mg until their timestamp is reached.
+- "Consumed today" uses local-midnight-to-next-local-midnight boundaries rather than assuming every day lasts exactly 24 hours.
+- Nonexistent local times during a DST spring-forward transition are rejected instead of silently being shifted to another clock time.
+- Repeated clock times during a DST fall-back transition remain a browser-local-time ambiguity; the basic HTML time input cannot distinguish the first occurrence from the second.
 
 ## Project structure
 
+```text
+index.html                 Page structure and accessible controls
+styles.css                 Responsive dark UI
+script.js                  UI, persistence, date/time validation, rendering
+caffeine-model.js          Pure calculation engine
+package.json               Test commands / Playwright dev dependency
+tests/verify-caffeine.mjs  Unit/invariant tests
+tests/verify-browser.mjs   Browser integration tests with deterministic clock
+.github/workflows/test.yml GitHub Actions test workflow
 ```
-caffeine-decay-tracker/
-  index.html              Main page
-  styles.css              All styling
-  script.js               UI logic, state management, persistence
-  caffeine-model.js       Calculation engine (pure functions, no DOM)
-  tests/
-    verify-caffeine.mjs   Automated tests for the calculation engine
-  .gitignore
-  README.md
+
+## Running locally
+
+The app itself has no runtime dependencies. Serve the repository root with any static server, for example:
+
+```bash
+python3 -m http.server 8080
 ```
 
-### Architecture
+Then open `http://localhost:8080`.
 
-The calculation engine (`caffeine-model.js`) contains all caffeine math as pure, side-effect-free functions. It has no DOM dependencies and can be tested independently with Node.js.
+## Tests
 
-The UI layer (`script.js`) handles rendering, user interaction, and localStorage persistence. It calls the calculation engine for all caffeine-related math — there is one source of truth for the decay formula.
+Install the development dependency and Playwright browser once:
 
-### Key functions in the calculation engine
+```bash
+npm install
+npx playwright install chromium
+```
 
-| Function | Purpose |
-|----------|---------|
-| `calculateRemaining(dose, intakeTs, nowTs, halfLife)` | Single-dose remaining caffeine |
-| `calculateTotalRemaining(entries, nowTs, halfLife)` | Sum of all doses' remaining caffeine |
-| `calculateProjection(entries, ts, halfLife)` | Remaining at any point in time |
-| `calculateDailyConsumed(entries, nowTs)` | Total mg consumed on the local calendar date |
-| `generateProjectionSeries(entries, nowTs, halfLife, steps)` | Array of future remaining values |
-| `generateChartData(entries, start, end, halfLife, points)` | Dense time series for chart rendering |
-| `validateHalfLife(h)` | Validates half-life is a finite positive number in range |
-| `validateDose(mg)` | Validates dose is a finite non-negative number in range |
+Run everything:
 
-## localStorage
+```bash
+npm test
+```
 
-Data is stored under two keys:
+Or separately:
 
-| Key | Contents |
-|-----|----------|
-| `caffeine-entries` | JSON array of intake records (id, doseMg, intakeTimestamp, label) |
-| `caffeine-halflife` | Half-life value as a string |
+```bash
+npm run test:unit
+npm run test:browser
+```
 
-Malformed or corrupted stored values are handled gracefully — the app falls back to defaults rather than crashing. If localStorage is unavailable (e.g. blocked cookies), the app functions normally during the current session without persistence.
+The browser test starts its own local static server, uses Playwright's fake clock, and covers persistence, future scheduled doses, decimal doses, editing/deleting, the last-entry empty state, sensitivity output, mobile overflow, malformed stored values, and a DST spring-forward validation case.
 
-## Date and time handling
+The unit suite covers analytical half-life invariants, arbitrary-dose superposition, 3/5/8-hour sensitivity trajectories, future-dose exclusion, local-day totals, 23/25-hour DST calendar days, projection/chart data, validation, and floating-point precision.
 
-- Internally uses JavaScript timestamps (milliseconds since epoch)
-- User-entered times represent the browser's local timezone
-- Elapsed time is calculated as `currentTimestamp - intakeTimestamp` in milliseconds, then converted to hours — no rounding before the exponential calculation
-- Correctly handles: cross-midnight entries, month/year boundaries, entries from previous days, future entries, and daylight-saving environments
+## Privacy
 
-## Floating-point handling
+Data is stored only under these browser keys:
 
-JavaScript floating-point arithmetic is used throughout. No intermediate values are rounded. Rounding is applied only for display:
-- Main reading: 1 decimal place (e.g. 217.4 mg)
-- Entry breakdown: 1 decimal place
-- Projections: rounded to nearest integer
-- Tests use appropriate numerical tolerances
+- `caffeine-entries`
+- `caffeine-halflife`
 
-## Browser support
-
-Works in all modern browsers with ES5+ support:
-- Chrome / Edge 80+
-- Firefox 78+
-- Safari 14+
-- Mobile Safari / Chrome for Android
-
-Uses: `localStorage`, `Date.now()`, `Math.pow()`, `Array.prototype.filter`, `template strings` (in tests only — the main app uses ES5-compatible string concatenation).
+If localStorage is unavailable, the app continues to work for the current session without persistence.

@@ -1,35 +1,42 @@
 /* Caffeine Decay Tracker — UI and state management.
- *
- * All caffeine math lives in caffeine-model.js.
- * This file handles DOM, persistence, and user interaction.
+ * All pharmacokinetic math lives in caffeine-model.js.
  */
 
 (function () {
+  "use strict";
 
-  // ── Constants ───────────────────────────────────────────────
+  var model = window.CaffeineModel;
+  if (!model) throw new Error("CaffeineModel failed to load");
 
   var STORAGE_KEY_ENTRIES = "caffeine-entries";
   var STORAGE_KEY_HALFLIFE = "caffeine-halflife";
-  var DEFAULT_HALFLIFE = 5.0;
   var UPDATE_INTERVAL_MS = 10000;
 
-  // ── DOM references ──────────────────────────────────────────
+  var entries = [];
+  var halfLife = model.DEFAULT_HALF_LIFE_HOURS;
+  var editingId = null;
+  var updateTimer = null;
+  var resizeRaf = null;
+  var lastFocusedBeforeModal = null;
 
   var heroValue = document.getElementById("hero-value");
   var heroEmpty = document.getElementById("hero-empty");
   var heroAmount = document.getElementById("hero-amount");
+  var heroRange = document.getElementById("hero-range");
+  var heroModel = document.getElementById("hero-model");
   var dailyConsumed = document.getElementById("daily-consumed");
   var dailyEntries = document.getElementById("daily-entries");
   var halflifeInput = document.getElementById("halflife-input");
+  var halflifeError = document.getElementById("halflife-error");
   var hlDec = document.getElementById("hl-dec");
   var hlInc = document.getElementById("hl-inc");
   var addForm = document.getElementById("add-form");
+  var formError = document.getElementById("form-error");
   var inputAmount = document.getElementById("input-amount");
   var inputTime = document.getElementById("input-time");
   var inputDate = document.getElementById("input-date");
   var inputLabel = document.getElementById("input-label");
   var intakeList = document.getElementById("intake-list");
-  var emptyIntakes = document.getElementById("empty-intakes");
   var projectionList = document.getElementById("projection-list");
   var chartSvg = document.getElementById("chart-svg");
   var editModal = document.getElementById("edit-modal");
@@ -40,20 +47,13 @@
   var editTime = document.getElementById("edit-time");
   var editDate = document.getElementById("edit-date");
   var editLabel = document.getElementById("edit-label");
-
-  // ── State ───────────────────────────────────────────────────
-
-  var entries = [];
-  var halfLife = DEFAULT_HALFLIFE;
-  var editingId = null;
-
-  // ── localStorage helpers ────────────────────────────────────
+  var editError = document.getElementById("edit-error");
 
   function readStored(key, fallback) {
     try {
-      var val = localStorage.getItem(key);
-      return val !== null ? val : fallback;
-    } catch (e) {
+      var value = localStorage.getItem(key);
+      return value !== null ? value : fallback;
+    } catch (error) {
       return fallback;
     }
   }
@@ -61,12 +61,10 @@
   function writeStored(key, value) {
     try {
       localStorage.setItem(key, value);
-    } catch (e) {
-      // storage unavailable — app still works this session
+    } catch (error) {
+      // Storage can be blocked; the current session still works.
     }
   }
-
-  // ── Entry persistence ───────────────────────────────────────
 
   function saveEntries() {
     writeStored(STORAGE_KEY_ENTRIES, JSON.stringify(entries));
@@ -75,26 +73,28 @@
   function loadEntries() {
     var raw = readStored(STORAGE_KEY_ENTRIES, null);
     if (!raw) return [];
+
     try {
       var parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
+
       var valid = [];
       for (var i = 0; i < parsed.length; i++) {
-        var e = parsed[i];
-        if (e && typeof e === "object" &&
-            typeof e.id === "string" &&
-            typeof e.doseMg === "number" && Number.isFinite(e.doseMg) && e.doseMg >= 0 &&
-            typeof e.intakeTimestamp === "number" && Number.isFinite(e.intakeTimestamp)) {
-          valid.push({
-            id: e.id,
-            doseMg: e.doseMg,
-            intakeTimestamp: e.intakeTimestamp,
-            label: typeof e.label === "string" ? e.label : ""
-          });
-        }
+        var entry = parsed[i];
+        if (!entry || typeof entry !== "object") continue;
+        if (typeof entry.id !== "string" || !entry.id) continue;
+        if (!model.validateDose(entry.doseMg)) continue;
+        if (!model.validateTimestamp(entry.intakeTimestamp)) continue;
+
+        valid.push({
+          id: entry.id,
+          doseMg: entry.doseMg,
+          intakeTimestamp: entry.intakeTimestamp,
+          label: typeof entry.label === "string" ? entry.label.slice(0, 60) : ""
+        });
       }
       return valid;
-    } catch (e) {
+    } catch (error) {
       return [];
     }
   }
@@ -105,113 +105,141 @@
 
   function loadHalfLife() {
     var raw = readStored(STORAGE_KEY_HALFLIFE, null);
-    if (raw === null) return DEFAULT_HALFLIFE;
-    var n = parseFloat(raw);
-    if (!validateHalfLife(n)) return DEFAULT_HALFLIFE;
-    return n;
+    if (raw === null) return model.DEFAULT_HALF_LIFE_HOURS;
+    var value = Number(raw);
+    return model.validateHalfLife(value) ? value : model.DEFAULT_HALF_LIFE_HOURS;
   }
-
-  // ── ID generation ───────────────────────────────────────────
 
   function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   }
 
-  // ── Date/time helpers ───────────────────────────────────────
-
-  function dateToInputValue(d) {
-    var y = d.getFullYear();
-    var m = String(d.getMonth() + 1).padStart(2, "0");
-    var day = String(d.getDate()).padStart(2, "0");
-    return y + "-" + m + "-" + day;
+  function pad2(value) {
+    return String(value).padStart(2, "0");
   }
 
-  function timeToInputValue(d) {
-    var h = String(d.getHours()).padStart(2, "0");
-    var m = String(d.getMinutes()).padStart(2, "0");
-    return h + ":" + m;
+  function dateToInputValue(date) {
+    return date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate());
+  }
+
+  function timeToInputValue(date) {
+    return pad2(date.getHours()) + ":" + pad2(date.getMinutes());
   }
 
   function inputsToTimestamp(dateStr, timeStr) {
-    var parts = dateStr.split("-");
-    var timeParts = timeStr.split(":");
-    var d = new Date(
-      parseInt(parts[0], 10),
-      parseInt(parts[1], 10) - 1,
-      parseInt(parts[2], 10),
-      parseInt(timeParts[0], 10),
-      parseInt(timeParts[1], 10),
-      0, 0
-    );
-    return d.getTime();
+    var dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || "");
+    var timeMatch = /^(\d{2}):(\d{2})$/.exec(timeStr || "");
+    if (!dateMatch || !timeMatch) return null;
+
+    var year = Number(dateMatch[1]);
+    var month = Number(dateMatch[2]);
+    var day = Number(dateMatch[3]);
+    var hour = Number(timeMatch[1]);
+    var minute = Number(timeMatch[2]);
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+
+    var date = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (!Number.isFinite(date.getTime())) return null;
+
+    // Reject silently-normalized impossible dates and DST spring-forward times.
+    if (date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day ||
+        date.getHours() !== hour ||
+        date.getMinutes() !== minute) {
+      return null;
+    }
+    return date.getTime();
   }
 
-  function formatTime(ts) {
-    var d = new Date(ts);
-    var h = d.getHours();
-    var m = String(d.getMinutes()).padStart(2, "0");
-    var ampm = h >= 12 ? "PM" : "AM";
-    var h12 = h % 12 || 12;
-    return h12 + ":" + m + " " + ampm;
+  function isSameLocalDate(timestamp, referenceTimestamp) {
+    var date = new Date(timestamp);
+    var reference = new Date(referenceTimestamp);
+    return date.getFullYear() === reference.getFullYear() &&
+      date.getMonth() === reference.getMonth() &&
+      date.getDate() === reference.getDate();
   }
 
-  function formatDate(ts) {
-    var d = new Date(ts);
-    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return d.getDate() + " " + months[d.getMonth()];
+  function formatTime(timestamp) {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit"
+    }).format(new Date(timestamp));
   }
 
-  function isToday(ts) {
-    var now = new Date();
-    var d = new Date(ts);
-    return d.getFullYear() === now.getFullYear() &&
-           d.getMonth() === now.getMonth() &&
-           d.getDate() === now.getDate();
+  function formatDate(timestamp) {
+    return new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      year: new Date(timestamp).getFullYear() === new Date().getFullYear() ? undefined : "numeric"
+    }).format(new Date(timestamp));
   }
 
-  function setText(el, text) {
-    if (el.textContent !== text) el.textContent = text;
+  function formatDose(mg) {
+    return Number.isInteger(mg) ? String(mg) : mg.toFixed(1).replace(/\.0$/, "");
   }
 
-  // ── Rendering ───────────────────────────────────────────────
+  function setText(element, text) {
+    if (element && element.textContent !== text) element.textContent = text;
+  }
+
+  function showError(element, message) {
+    if (!element) return;
+    element.textContent = message || "";
+    element.hidden = !message;
+  }
 
   function renderHero() {
     var now = Date.now();
     if (entries.length === 0) {
-      heroAmount.style.display = "none";
-      heroEmpty.style.display = "";
+      heroAmount.hidden = true;
+      heroEmpty.hidden = false;
+      heroRange.hidden = true;
       return;
     }
-    heroAmount.style.display = "";
-    heroEmpty.style.display = "none";
 
-    var total = calculateTotalRemaining(entries, now, halfLife);
-    if (total === null) total = 0;
-    setText(heroValue, total.toFixed(1));
+    var sensitivity = model.calculateSensitivity(entries, now, halfLife);
+    if (!sensitivity) {
+      heroAmount.hidden = true;
+      heroEmpty.hidden = false;
+      heroRange.hidden = true;
+      setText(heroEmpty, "Unable to calculate with the current saved data");
+      return;
+    }
+
+    heroAmount.hidden = false;
+    heroEmpty.hidden = true;
+    heroRange.hidden = false;
+    setText(heroValue, sensitivity.selected.toFixed(1));
+    setText(heroModel, halfLife.toFixed(1));
+    setText(
+      heroRange,
+      "Adult sensitivity reference (3–8 h): " +
+      sensitivity.referenceLow.toFixed(1) + "–" + sensitivity.referenceHigh.toFixed(1) + " mg"
+    );
   }
 
   function renderDailySummary() {
     var now = Date.now();
-    var consumed = calculateDailyConsumed(entries, now);
-    setText(dailyConsumed, Math.round(consumed).toString());
+    setText(dailyConsumed, formatDose(model.calculateDailyConsumed(entries, now)));
+    setText(dailyEntries, String(model.calculateDailyEntryCount(entries, now)));
+  }
 
-    var todayCount = 0;
-    for (var i = 0; i < entries.length; i++) {
-      if (isToday(entries[i].intakeTimestamp)) todayCount++;
-    }
-    setText(dailyEntries, todayCount.toString());
+  function escapeHtml(value) {
+    var div = document.createElement("div");
+    div.textContent = value;
+    return div.innerHTML;
   }
 
   function renderIntakeList() {
     var now = Date.now();
     if (entries.length === 0) {
-      emptyIntakes.style.display = "";
-      var items = intakeList.querySelectorAll(".intake-item");
-      for (var k = 0; k < items.length; k++) items[k].remove();
+      intakeList.innerHTML = '<li class="empty-message" id="empty-intakes">No caffeine intakes recorded</li>';
       return;
     }
-    emptyIntakes.style.display = "none";
 
     var sorted = entries.slice().sort(function (a, b) {
       return b.intakeTimestamp - a.intakeTimestamp;
@@ -219,74 +247,60 @@
 
     var html = "";
     for (var i = 0; i < sorted.length; i++) {
-      var e = sorted[i];
-      var remaining = calculateRemaining(e.doseMg, e.intakeTimestamp, now, halfLife);
-      if (remaining === null) remaining = 0;
-      var elapsed = now - e.intakeTimestamp;
-      var isFuture = elapsed < 0;
-      var elapsedStr = formatElapsed(elapsed);
-      var dateStr = isToday(e.intakeTimestamp) ? "" : formatDate(e.intakeTimestamp) + " · ";
+      var entry = sorted[i];
+      var isFuture = entry.intakeTimestamp > now;
+      var remaining = model.calculateRemaining(entry.doseMg, entry.intakeTimestamp, now, halfLife);
+      var datePrefix = isSameLocalDate(entry.intakeTimestamp, now) ? "" : formatDate(entry.intakeTimestamp) + " · ";
 
-      html += '<li class="intake-item" data-id="' + e.id + '">';
-      html += '<div class="intake-info">';
-      html += '<div class="intake-top">';
-      html += '<span class="intake-dose">' + e.doseMg + ' mg</span>';
-      if (e.label) {
-        html += '<span class="intake-label-text">' + escapeHtml(e.label) + '</span>';
-      }
-      html += '</div>';
-      html += '<div class="intake-meta">';
-      html += '<span>' + dateStr + formatTime(e.intakeTimestamp) + '</span>';
+      html += '<li class="intake-item" data-id="' + escapeHtml(entry.id) + '">';
+      html += '<div class="intake-info"><div class="intake-top">';
+      html += '<span class="intake-dose">' + formatDose(entry.doseMg) + ' mg</span>';
+      if (entry.label) html += '<span class="intake-label-text">' + escapeHtml(entry.label) + '</span>';
+      html += '</div><div class="intake-meta">';
+      html += '<span>' + datePrefix + formatTime(entry.intakeTimestamp) + '</span>';
       if (isFuture) {
         html += '<span class="intake-future">Scheduled</span>';
       } else {
-        html += '<span>' + elapsedStr + ' ago</span>';
+        html += '<span>' + model.formatElapsed(now - entry.intakeTimestamp) + ' ago</span>';
         html += '<span class="intake-remaining">Remaining: ' + remaining.toFixed(1) + ' mg</span>';
       }
-      html += '</div></div>';
-      html += '<div class="intake-actions">';
-      html += '<button class="btn-icon" aria-label="Edit intake" data-action="edit" data-id="' + e.id + '" type="button">&#9998;</button>';
-      html += '<button class="btn-icon danger" aria-label="Delete intake" data-action="delete" data-id="' + e.id + '" type="button">&times;</button>';
+      html += '</div></div><div class="intake-actions">';
+      html += '<button class="btn-icon" aria-label="Edit intake" data-action="edit" data-id="' + escapeHtml(entry.id) + '" type="button">&#9998;</button>';
+      html += '<button class="btn-icon danger" aria-label="Delete intake" data-action="delete" data-id="' + escapeHtml(entry.id) + '" type="button">&times;</button>';
       html += '</div></li>';
     }
-    intakeList.innerHTML = html + '<li class="empty-message" id="empty-intakes" style="display:none">No caffeine intakes recorded</li>';
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
+    intakeList.innerHTML = html;
   }
 
   function renderProjection() {
     var now = Date.now();
     if (entries.length === 0) {
-      projectionList.innerHTML = '<div class="empty-message">Add intakes to see projections</div>';
+      projectionList.innerHTML = '<div class="empty-message compact">Add intakes to see projections</div>';
       return;
     }
 
     var steps = [0, 1, 2, 4, 6, 8, 10, 12];
-    var series = generateProjectionSeries(entries, now, halfLife, steps);
+    var series = model.generateProjectionSeries(entries, now, halfLife, steps);
     if (!series) return;
 
-    var maxVal = 0;
+    var maxValue = 0;
     for (var i = 0; i < series.length; i++) {
-      if (series[i].remaining > maxVal) maxVal = series[i].remaining;
+      maxValue = Math.max(maxValue, series[i].remaining);
     }
-    if (maxVal === 0) maxVal = 1;
+    if (maxValue <= 0) maxValue = 1;
 
     var html = "";
     for (var j = 0; j < series.length; j++) {
-      var s = series[j];
-      var isNow = s.offsetHours === 0;
-      var rowClass = isNow ? "projection-row now" : "projection-row";
-      var timeLabel = isNow ? "Now" : formatTime(s.timestamp);
-      var pct = (s.remaining / maxVal) * 100;
-
-      html += '<div class="' + rowClass + '">';
-      html += '<span class="projection-time">' + timeLabel + '</span>';
-      html += '<div class="projection-bar-container"><div class="projection-bar" style="width:' + pct.toFixed(1) + '%"></div></div>';
-      html += '<span class="projection-value">' + Math.round(s.remaining) + ' mg</span>';
+      var point = series[j];
+      var isNow = point.offsetHours === 0;
+      var percentage = Math.max(0, Math.min(100, point.remaining / maxValue * 100));
+      html += '<div class="projection-row' + (isNow ? ' now' : '') + '">';
+      html += '<span class="projection-time">' + (isNow ? "Now" : formatTime(point.timestamp)) + '</span>';
+      html += '<div class="projection-center">';
+      html += '<div class="projection-bar-container"><div class="projection-bar" style="width:' + percentage.toFixed(1) + '%"></div></div>';
+      html += '<span class="projection-range">3–8 h ref: ' + Math.round(point.referenceLow) + '–' + Math.round(point.referenceHigh) + ' mg</span>';
+      html += '</div>';
+      html += '<span class="projection-value">' + Math.round(point.remaining) + ' mg</span>';
       html += '</div>';
     }
     projectionList.innerHTML = html;
@@ -304,81 +318,88 @@
       if (entries[i].intakeTimestamp < earliest) earliest = entries[i].intakeTimestamp;
     }
 
-    var hoursBack = Math.max(2, (now - earliest) / (1000 * 60 * 60) + 1);
-    var startTs = now - hoursBack * 60 * 60 * 1000;
-    var endTs = now + 12 * 60 * 60 * 1000;
-    var data = generateChartData(entries, startTs, endTs, halfLife, 200);
+    var hoursBack = Math.max(2, Math.min(48, (now - earliest) / 3600000 + 1));
+    var startTimestamp = now - hoursBack * 3600000;
+    var endTimestamp = now + 12 * 3600000;
+    var data = model.generateChartData(entries, startTimestamp, endTimestamp, halfLife, 200);
     if (!data || data.length === 0) return;
 
-    var svgW = chartSvg.clientWidth || 480;
-    var svgH = 180;
-    var padL = 40, padR = 10, padT = 10, padB = 24;
-    var plotW = svgW - padL - padR;
-    var plotH = svgH - padT - padB;
+    var svgWidth = chartSvg.clientWidth || 480;
+    var svgHeight = 190;
+    var padLeft = 42;
+    var padRight = 10;
+    var padTop = 10;
+    var padBottom = 26;
+    var plotWidth = Math.max(1, svgWidth - padLeft - padRight);
+    var plotHeight = Math.max(1, svgHeight - padTop - padBottom);
 
     var maxMg = 0;
     for (var k = 0; k < data.length; k++) {
-      if (data[k].remaining > maxMg) maxMg = data[k].remaining;
+      maxMg = Math.max(maxMg, data[k].remaining, data[k].fast, data[k].slow);
     }
-    if (maxMg === 0) maxMg = 100;
+    if (maxMg <= 0) maxMg = 50;
     maxMg = Math.ceil(maxMg / 50) * 50;
 
-    function x(ts) { return padL + ((ts - startTs) / (endTs - startTs)) * plotW; }
-    function y(mg) { return padT + plotH - (mg / maxMg) * plotH; }
-
-    var linePts = "";
-    var areaPts = padL + "," + (padT + plotH) + " ";
-    for (var d = 0; d < data.length; d++) {
-      var px = x(data[d].timestamp);
-      var py = y(data[d].remaining);
-      linePts += px + "," + py + " ";
-      areaPts += px + "," + py + " ";
+    function x(timestamp) {
+      return padLeft + ((timestamp - startTimestamp) / (endTimestamp - startTimestamp)) * plotWidth;
     }
-    areaPts += (padL + plotW) + "," + (padT + plotH);
+    function y(mg) {
+      return padTop + plotHeight - (mg / maxMg) * plotHeight;
+    }
 
-    var nowX = x(now);
-
-    var axisLabels = "";
-    var hourStep = (endTs - startTs) / (1000 * 60 * 60);
-    var labelInterval = hourStep > 18 ? 4 : hourStep > 10 ? 3 : 2;
-    var firstHour = new Date(startTs);
-    firstHour.setMinutes(0, 0, 0);
-    firstHour.setHours(firstHour.getHours() + 1);
-    var labelTs = firstHour.getTime();
-    while (labelTs < endTs) {
-      var ld = new Date(labelTs);
-      if (ld.getHours() % labelInterval === 0) {
-        var lx = x(labelTs);
-        var h12 = ld.getHours() % 12 || 12;
-        var ap = ld.getHours() >= 12 ? "p" : "a";
-        axisLabels += '<text class="chart-axis-label" x="' + lx + '" y="' + (svgH - 4) + '" text-anchor="middle">' + h12 + ap + '</text>';
+    function pointsFor(key) {
+      var points = "";
+      for (var p = 0; p < data.length; p++) {
+        points += x(data[p].timestamp).toFixed(2) + "," + y(data[p][key]).toFixed(2) + " ";
       }
-      labelTs += 60 * 60 * 1000;
+      return points;
+    }
+
+    var selectedPoints = pointsFor("remaining");
+    var fastPoints = pointsFor("fast");
+    var slowPoints = pointsFor("slow");
+    var areaPoints = padLeft + "," + (padTop + plotHeight) + " " + selectedPoints + (padLeft + plotWidth) + "," + (padTop + plotHeight);
+
+    var labels = "";
+    var totalHours = (endTimestamp - startTimestamp) / 3600000;
+    var labelInterval = totalHours > 24 ? 6 : totalHours > 14 ? 4 : 2;
+    var labelDate = new Date(startTimestamp);
+    labelDate.setMinutes(0, 0, 0);
+    labelDate.setHours(labelDate.getHours() + 1);
+    var labelTimestamp = labelDate.getTime();
+    while (labelTimestamp < endTimestamp) {
+      var hour = new Date(labelTimestamp).getHours();
+      if (hour % labelInterval === 0) {
+        labels += '<text class="chart-axis-label" x="' + x(labelTimestamp).toFixed(2) + '" y="' + (svgHeight - 5) + '" text-anchor="middle">' + escapeHtml(formatTime(labelTimestamp).replace(":00", "")) + '</text>';
+      }
+      labelTimestamp += 3600000;
     }
 
     var yLabels = "";
     var yStep = maxMg <= 200 ? 50 : maxMg <= 500 ? 100 : 200;
-    for (var yv = 0; yv <= maxMg; yv += yStep) {
-      var yy = y(yv);
-      yLabels += '<text class="chart-axis-label" x="' + (padL - 6) + '" y="' + (yy + 3) + '" text-anchor="end">' + yv + '</text>';
+    for (var value = 0; value <= maxMg; value += yStep) {
+      yLabels += '<text class="chart-axis-label" x="' + (padLeft - 6) + '" y="' + (y(value) + 3).toFixed(2) + '" text-anchor="end">' + value + '</text>';
     }
 
     var doseLines = "";
-    for (var di = 0; di < entries.length; di++) {
-      var dts = entries[di].intakeTimestamp;
-      if (dts >= startTs && dts <= endTs) {
-        var dx = x(dts);
-        doseLines += '<line class="chart-dose-line" x1="' + dx + '" y1="' + padT + '" x2="' + dx + '" y2="' + (padT + plotH) + '"/>';
+    for (var d = 0; d < entries.length; d++) {
+      var doseTimestamp = entries[d].intakeTimestamp;
+      if (doseTimestamp >= startTimestamp && doseTimestamp <= endTimestamp) {
+        var doseX = x(doseTimestamp).toFixed(2);
+        doseLines += '<line class="chart-dose-line" x1="' + doseX + '" y1="' + padTop + '" x2="' + doseX + '" y2="' + (padTop + plotHeight) + '"/>';
       }
     }
 
-    chartSvg.setAttribute("viewBox", "0 0 " + svgW + " " + svgH);
+    var nowX = x(now).toFixed(2);
+    chartSvg.setAttribute("viewBox", "0 0 " + svgWidth + " " + svgHeight);
     chartSvg.innerHTML =
-      '<polygon class="chart-area" points="' + areaPts + '"/>' +
-      '<polyline class="chart-line" points="' + linePts + '"/>' +
+      '<polygon class="chart-area" points="' + areaPoints + '"/>' +
+      '<polyline class="chart-line-reference fast" points="' + fastPoints + '"/>' +
+      '<polyline class="chart-line-reference slow" points="' + slowPoints + '"/>' +
+      '<polyline class="chart-line" points="' + selectedPoints + '"/>' +
       doseLines +
-      '<line class="chart-now-line" x1="' + nowX + '" y1="' + padT + '" x2="' + nowX + '" y2="' + (padT + plotH) + '"/>' +
-      axisLabels + yLabels;
+      '<line class="chart-now-line" x1="' + nowX + '" y1="' + padTop + '" x2="' + nowX + '" y2="' + (padTop + plotHeight) + '"/>' +
+      labels + yLabels;
   }
 
   function renderAll() {
@@ -389,59 +410,69 @@
     renderChart();
   }
 
-  // ── Form defaults ──────────────────────────────────────────
-
   function setFormDefaults() {
     var now = new Date();
     inputDate.value = dateToInputValue(now);
     inputTime.value = timeToInputValue(now);
     inputAmount.value = "";
     inputLabel.value = "";
+    showError(formError, "");
   }
 
-  // ── Half-life handling ─────────────────────────────────────
+  function setHalfLife(value) {
+    var parsed = Number(value);
+    var rounded = Math.round(parsed * 10) / 10;
+    if (!model.validateHalfLife(parsed) || !model.validateHalfLife(rounded)) {
+      halflifeInput.value = halfLife.toFixed(1);
+      showError(halflifeError, "Enter a half-life of at least 0.1 hours.");
+      return false;
+    }
 
-  function setHalfLife(val) {
-    var n = parseFloat(val);
-    if (!validateHalfLife(n)) return;
-    halfLife = Math.round(n * 10) / 10;
+    halfLife = rounded;
     halflifeInput.value = halfLife.toFixed(1);
+    showError(halflifeError, "");
     saveHalfLife();
     renderAll();
+    return true;
   }
 
   hlDec.addEventListener("click", function () {
-    setHalfLife(halfLife - 0.5);
+    setHalfLife(Math.max(0.1, halfLife - 0.5));
   });
-
   hlInc.addEventListener("click", function () {
     setHalfLife(halfLife + 0.5);
   });
-
   halflifeInput.addEventListener("change", function () {
     setHalfLife(halflifeInput.value);
   });
 
-  // ── Add intake ─────────────────────────────────────────────
+  function validateEntryForm(amountValue, dateValue, timeValue) {
+    var dose = Number(amountValue);
+    if (!model.validateDose(dose) || dose <= 0) {
+      return { error: "Enter a caffeine amount above 0 mg and no more than 5000 mg." };
+    }
 
-  addForm.addEventListener("submit", function (e) {
-    e.preventDefault();
+    var timestamp = inputsToTimestamp(dateValue, timeValue);
+    if (timestamp === null) {
+      return { error: "Enter a valid local date and time. Some clock times do not exist during daylight-saving changes." };
+    }
 
-    var mg = parseFloat(inputAmount.value);
-    if (!Number.isFinite(mg) || mg <= 0 || mg > 5000) return;
+    return { doseMg: dose, intakeTimestamp: timestamp };
+  }
 
-    var dateStr = inputDate.value;
-    var timeStr = inputTime.value;
-    if (!dateStr || !timeStr) return;
-
-    var ts = inputsToTimestamp(dateStr, timeStr);
-    if (!Number.isFinite(ts)) return;
+  addForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var result = validateEntryForm(inputAmount.value, inputDate.value, inputTime.value);
+    if (result.error) {
+      showError(formError, result.error);
+      return;
+    }
 
     entries.push({
       id: generateId(),
-      doseMg: Math.round(mg),
-      intakeTimestamp: ts,
-      label: inputLabel.value.trim()
+      doseMg: result.doseMg,
+      intakeTimestamp: result.intakeTimestamp,
+      label: inputLabel.value.trim().slice(0, 60)
     });
 
     saveEntries();
@@ -450,79 +481,73 @@
     renderAll();
   });
 
-  // ── Intake list actions ────────────────────────────────────
+  intakeList.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-action]");
+    if (!button) return;
 
-  intakeList.addEventListener("click", function (e) {
-    var btn = e.target.closest("[data-action]");
-    if (!btn) return;
-
-    var action = btn.getAttribute("data-action");
-    var id = btn.getAttribute("data-id");
-
+    var action = button.getAttribute("data-action");
+    var id = button.getAttribute("data-id");
     if (action === "delete") {
-      entries = entries.filter(function (en) { return en.id !== id; });
+      entries = entries.filter(function (entry) { return entry.id !== id; });
       saveEntries();
       renderAll();
     } else if (action === "edit") {
-      openEditModal(id);
+      openEditModal(id, button);
     }
   });
 
-  // ── Edit modal ─────────────────────────────────────────────
-
-  function openEditModal(id) {
-    var entry = null;
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i].id === id) { entry = entries[i]; break; }
-    }
+  function openEditModal(id, trigger) {
+    var entry = entries.find(function (candidate) { return candidate.id === id; });
     if (!entry) return;
 
     editingId = id;
-    var d = new Date(entry.intakeTimestamp);
+    lastFocusedBeforeModal = trigger || document.activeElement;
+    var date = new Date(entry.intakeTimestamp);
     editAmount.value = entry.doseMg;
-    editDate.value = dateToInputValue(d);
-    editTime.value = timeToInputValue(d);
+    editDate.value = dateToInputValue(date);
+    editTime.value = timeToInputValue(date);
     editLabel.value = entry.label || "";
+    showError(editError, "");
+    editModal.hidden = false;
     editModal.classList.add("visible");
+    document.body.classList.add("modal-open");
     editAmount.focus();
   }
 
   function closeEditModal() {
     editModal.classList.remove("visible");
+    editModal.hidden = true;
+    document.body.classList.remove("modal-open");
     editingId = null;
+    if (lastFocusedBeforeModal && typeof lastFocusedBeforeModal.focus === "function") {
+      lastFocusedBeforeModal.focus();
+    }
+    lastFocusedBeforeModal = null;
   }
 
   modalClose.addEventListener("click", closeEditModal);
   modalCancel.addEventListener("click", closeEditModal);
-
-  editModal.addEventListener("click", function (e) {
-    if (e.target === editModal) closeEditModal();
+  editModal.addEventListener("click", function (event) {
+    if (event.target === editModal) closeEditModal();
   });
 
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && editModal.classList.contains("visible")) {
-      closeEditModal();
-    }
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !editModal.hidden) closeEditModal();
   });
 
   modalSave.addEventListener("click", function () {
     if (!editingId) return;
-
-    var mg = parseFloat(editAmount.value);
-    if (!Number.isFinite(mg) || mg <= 0 || mg > 5000) return;
-
-    var dateStr = editDate.value;
-    var timeStr = editTime.value;
-    if (!dateStr || !timeStr) return;
-
-    var ts = inputsToTimestamp(dateStr, timeStr);
-    if (!Number.isFinite(ts)) return;
+    var result = validateEntryForm(editAmount.value, editDate.value, editTime.value);
+    if (result.error) {
+      showError(editError, result.error);
+      return;
+    }
 
     for (var i = 0; i < entries.length; i++) {
       if (entries[i].id === editingId) {
-        entries[i].doseMg = Math.round(mg);
-        entries[i].intakeTimestamp = ts;
-        entries[i].label = editLabel.value.trim();
+        entries[i].doseMg = result.doseMg;
+        entries[i].intakeTimestamp = result.intakeTimestamp;
+        entries[i].label = editLabel.value.trim().slice(0, 60);
         break;
       }
     }
@@ -531,10 +556,6 @@
     closeEditModal();
     renderAll();
   });
-
-  // ── Periodic update ────────────────────────────────────────
-
-  var updateTimer = null;
 
   function startUpdates() {
     if (updateTimer) clearInterval(updateTimer);
@@ -548,9 +569,6 @@
     }
   });
 
-  // ── Resize handler for chart ───────────────────────────────
-
-  var resizeRaf = null;
   window.addEventListener("resize", function () {
     if (resizeRaf) return;
     resizeRaf = requestAnimationFrame(function () {
@@ -559,13 +577,10 @@
     });
   });
 
-  // ── Initialise ─────────────────────────────────────────────
-
   entries = loadEntries();
   halfLife = loadHalfLife();
   halflifeInput.value = halfLife.toFixed(1);
   setFormDefaults();
   renderAll();
   startUpdates();
-
 })();
