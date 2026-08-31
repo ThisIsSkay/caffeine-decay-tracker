@@ -1,0 +1,12 @@
+{
+  "name": "caffeine-decay-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-based caffeine intake tracker with exponential decay calculation.",
+  "scripts": {
+    "test": "node tests/verify-caffeine.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

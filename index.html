@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Caffeine Decay Tracker</title>
+  <meta name="description" content="Track caffeine intake and estimate how much remains in your body using exponential decay.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1 class="app-title">Caffeine Tracker</h1>
+    </header>
+
+    <!-- Hero: estimated caffeine remaining -->
+    <section class="hero" aria-label="Estimated caffeine remaining">
+      <p class="hero-label">Estimated caffeine remaining</p>
+      <p class="hero-amount" id="hero-amount" aria-live="off">
+        <span id="hero-value">0.0</span><span class="hero-unit"> mg</span>
+      </p>
+      <p class="hero-empty" id="hero-empty">Add your first caffeine intake below</p>
+    </section>
+
+    <!-- Daily summary -->
+    <div class="daily-summary">
+      <div class="daily-stat">
+        <div class="daily-stat-value" id="daily-consumed">0</div>
+        <div class="daily-stat-label">Consumed today (mg)</div>
+      </div>
+      <div class="daily-stat">
+        <div class="daily-stat-value" id="daily-entries">0</div>
+        <div class="daily-stat-label">Entries today</div>
+      </div>
+    </div>
+
+    <!-- Half-life config -->
+    <div class="halflife-config" role="group" aria-label="Caffeine half-life setting">
+      <span class="halflife-label" id="halflife-label">Half-life</span>
+      <div class="halflife-controls">
+        <button class="halflife-btn" id="hl-dec" aria-label="Decrease half-life" type="button">&minus;</button>
+        <label for="halflife-input" class="sr-only">Half-life in hours</label>
+        <input type="number" class="halflife-input" id="halflife-input"
+               min="0.5" max="24" step="0.5" value="5.0"
+               aria-describedby="halflife-label">
+        <span class="halflife-unit">hours</span>
+        <button class="halflife-btn" id="hl-inc" aria-label="Increase half-life" type="button">+</button>
+      </div>
+    </div>
+
+    <!-- Add caffeine form -->
+    <section class="card" aria-label="Add caffeine intake">
+      <div class="card-header">Add Caffeine</div>
+      <form class="add-form" id="add-form" autocomplete="off">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="input-amount">Amount (mg)</label>
+            <input type="number" class="form-input" id="input-amount"
+                   min="1" max="5000" step="1" placeholder="200" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="input-time">Time</label>
+            <input type="time" class="form-input" id="input-time" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="input-date">Date</label>
+            <input type="date" class="form-input" id="input-date" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="input-label">Label (optional)</label>
+            <input type="text" class="form-input" id="input-label"
+                   placeholder="Morning Coffee" maxlength="60">
+          </div>
+        </div>
+        <button type="submit" class="btn-add">Add Intake</button>
+      </form>
+    </section>
+
+    <!-- Intake history -->
+    <section class="card" aria-label="Caffeine intake history">
+      <div class="card-header">Intakes</div>
+      <ul class="intake-list" id="intake-list">
+        <li class="empty-message" id="empty-intakes">No caffeine intakes recorded</li>
+      </ul>
+    </section>
+
+    <!-- Projection -->
+    <section class="card" aria-label="Caffeine level projection">
+      <div class="card-header">Projection</div>
+      <div class="projection-list" id="projection-list"></div>
+    </section>
+
+    <!-- Chart -->
+    <section class="card" aria-label="Caffeine decay chart">
+      <div class="card-header">Timeline</div>
+      <div class="chart-container" id="chart-container">
+        <svg class="chart-svg" id="chart-svg" aria-hidden="true"></svg>
+      </div>
+    </section>
+
+    <footer class="app-footer">
+      This is a mathematical estimate, not a medical measurement.<br>
+      All data stays in your browser. No data is sent anywhere.
+    </footer>
+  </div>
+
+  <!-- Edit modal -->
+  <div class="modal-overlay" id="edit-modal" role="dialog" aria-modal="true" aria-label="Edit intake">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Edit Intake</span>
+        <button class="modal-close" id="modal-close" aria-label="Close" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="edit-amount">Amount (mg)</label>
+            <input type="number" class="form-input" id="edit-amount"
+                   min="1" max="5000" step="1" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-time">Time</label>
+            <input type="time" class="form-input" id="edit-time" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="edit-date">Date</label>
+            <input type="date" class="form-input" id="edit-date" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-label">Label</label>
+            <input type="text" class="form-input" id="edit-label"
+                   placeholder="Optional" maxlength="60">
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-modal" id="modal-cancel" type="button">Cancel</button>
+        <button class="btn-modal primary" id="modal-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="caffeine-model.js"></script>
+  <script src="script.js" defer></script>
+</body>
+</html>

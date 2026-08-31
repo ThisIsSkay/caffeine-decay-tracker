@@ -1,0 +1,693 @@
+/* ── Caffeine Decay Tracker ─────────────────────────────────── */
+
+:root {
+  --bg: #0f1419;
+  --surface: #1a2027;
+  --surface-raised: #222b35;
+  --border: #2d3842;
+  --border-focus: #4a9eff;
+  --text: #e1e8ef;
+  --text-dim: #8899a6;
+  --text-muted: #5c6f7e;
+  --accent: #4a9eff;
+  --accent-dim: #2a6cb8;
+  --caffeine: #00e676;
+  --caffeine-dim: #00a854;
+  --caffeine-glow: rgba(0, 230, 118, 0.15);
+  --danger: #ff5252;
+  --danger-dim: #c62828;
+  --warning: #ffab40;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ──────────────────────────────────────────────────── */
+
+.app {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 16px 16px 80px;
+}
+
+.app-header {
+  text-align: center;
+  padding: 24px 0 8px;
+}
+
+.app-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+/* ── Hero: current caffeine ──────────────────────────────────── */
+
+.hero {
+  text-align: center;
+  padding: 32px 16px;
+  margin: 16px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.hero-amount {
+  font-size: clamp(48px, 12vw, 72px);
+  font-weight: 700;
+  color: var(--caffeine);
+  line-height: 1.1;
+  margin: 8px 0;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 30px var(--caffeine-glow);
+}
+
+.hero-unit {
+  font-size: clamp(20px, 5vw, 28px);
+  font-weight: 400;
+  color: var(--caffeine-dim);
+  margin-left: 4px;
+}
+
+.hero-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.hero-empty {
+  color: var(--text-muted);
+  font-size: 15px;
+  padding: 8px 0;
+}
+
+/* ── Daily summary ───────────────────────────────────────────── */
+
+.daily-summary {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.daily-stat {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  text-align: center;
+}
+
+.daily-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-stat-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* ── Half-life config ────────────────────────────────────────── */
+
+.halflife-config {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.halflife-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.halflife-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.halflife-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.halflife-btn:hover {
+  border-color: var(--accent);
+  background: var(--border);
+}
+
+.halflife-btn:active {
+  transform: scale(0.95);
+}
+
+.halflife-input {
+  width: 64px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.halflife-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.halflife-unit {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* ── Add intake form ─────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0 0 16px;
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.add-form {
+  padding: 16px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.form-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group.full {
+  flex-basis: 100%;
+}
+
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin: 0 0 6px;
+}
+
+.form-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 16px;
+  color: var(--text);
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
+}
+
+.btn-add {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--caffeine);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn-add:hover {
+  opacity: 0.9;
+}
+
+.btn-add:active {
+  transform: scale(0.98);
+}
+
+/* ── Intake list ─────────────────────────────────────────────── */
+
+.intake-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.intake-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.intake-item:last-child {
+  border-bottom: none;
+}
+
+.intake-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.intake-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.intake-dose {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.intake-label-text {
+  font-size: 14px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.intake-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.intake-remaining {
+  color: var(--caffeine-dim);
+  font-weight: 600;
+}
+
+.intake-future {
+  color: var(--warning);
+}
+
+.intake-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.btn-icon:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.btn-icon.danger:hover {
+  background: var(--danger-dim);
+  color: #fff;
+}
+
+.empty-message {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ── Projection ──────────────────────────────────────────────── */
+
+.projection-list {
+  padding: 4px 16px 16px;
+}
+
+.projection-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(45, 56, 66, 0.5);
+}
+
+.projection-row:last-child {
+  border-bottom: none;
+}
+
+.projection-time {
+  width: 80px;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.projection-bar-container {
+  flex: 1;
+  height: 6px;
+  background: var(--bg);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 12px;
+}
+
+.projection-bar {
+  height: 100%;
+  background: var(--caffeine);
+  border-radius: 3px;
+  opacity: 0.6;
+  transition: width 0.3s ease;
+}
+
+.projection-value {
+  width: 64px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.projection-row.now .projection-time {
+  color: var(--caffeine);
+  font-weight: 700;
+}
+
+.projection-row.now .projection-value {
+  color: var(--caffeine);
+}
+
+.projection-row.now .projection-bar {
+  opacity: 1;
+}
+
+/* ── Chart ───────────────────────────────────────────────────── */
+
+.chart-container {
+  padding: 16px;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 180px;
+  display: block;
+}
+
+.chart-area {
+  fill: var(--caffeine-glow);
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--caffeine);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.chart-now-line {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.chart-axis-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-family: inherit;
+}
+
+.chart-dose-line {
+  stroke: var(--caffeine-dim);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.5;
+}
+
+/* ── Edit modal ──────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+.modal-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.modal-close:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.modal-body {
+  padding: 16px;
+}
+
+.modal-actions {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-modal {
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-modal:hover {
+  background: var(--border);
+}
+
+.btn-modal.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-modal.primary:hover {
+  opacity: 0.9;
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+
+.app-footer {
+  text-align: center;
+  padding: 24px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+
+@media (max-width: 420px) {
+  .app {
+    padding: 8px 12px 80px;
+  }
+
+  .hero {
+    padding: 24px 12px;
+    margin: 12px 0;
+  }
+
+  .daily-summary {
+    gap: 8px;
+  }
+
+  .daily-stat {
+    padding: 10px 8px;
+  }
+
+  .form-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .halflife-config {
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+  }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ── Focus visible ───────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* ── Screen reader only ──────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
