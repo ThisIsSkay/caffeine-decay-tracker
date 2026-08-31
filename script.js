@@ -421,13 +421,14 @@
 
   function setHalfLife(value) {
     var parsed = Number(value);
-    if (!model.validateHalfLife(parsed)) {
+    var rounded = Math.round(parsed * 10) / 10;
+    if (!model.validateHalfLife(parsed) || !model.validateHalfLife(rounded)) {
       halflifeInput.value = halfLife.toFixed(1);
-      showError(halflifeError, "Enter a half-life greater than 0 hours.");
+      showError(halflifeError, "Enter a half-life of at least 0.1 hours.");
       return false;
     }
 
-    halfLife = Math.round(parsed * 10) / 10;
+    halfLife = rounded;
     halflifeInput.value = halfLife.toFixed(1);
     showError(halflifeError, "");
     saveHalfLife();
