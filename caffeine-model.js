@@ -138,7 +138,7 @@ function calculateDailyEntryCount(entries, nowTimestamp) {
   var count = 0;
   for (var i = 0; i < entries.length; i++) {
     var entry = entries[i];
-    if (!entry || !validateTimestamp(entry.intakeTimestamp)) continue;
+    if (!entry || !validateDose(entry.doseMg) || !validateTimestamp(entry.intakeTimestamp)) continue;
     if (entry.intakeTimestamp >= bounds.start &&
         entry.intakeTimestamp < bounds.end &&
         entry.intakeTimestamp <= nowTimestamp) {
