@@ -12,7 +12,7 @@
   <main class="app">
     <header class="app-header">
       <h1 class="app-title">Caffeine Tracker</h1>
-      <p class="app-subtitle">Dose-event simulator · first-order elimination</p>
+      <p class="app-subtitle">First-order elimination model</p>
     </header>
 
     <section class="hero" aria-label="Estimated caffeine remaining">
@@ -21,28 +21,28 @@
         <span id="hero-value">0.0</span><span class="hero-unit"> mg</span>
       </p>
       <p class="hero-concentration" id="hero-concentration" hidden>
-        Est. concentration: <strong><span id="hero-conc-value">0.00</span> mg/L</strong>
+        Estimated concentration: <strong><span id="hero-conc-value">0.00</span> mg/L</strong>
       </p>
-      <p class="hero-model-line">Selected model: <strong><span id="hero-model">5.0</span> h half-life</strong></p>
+      <p class="hero-model-line">Model: <strong><span id="hero-model">5.0</span> h half-life</strong></p>
       <p class="hero-range" id="hero-range" hidden>Adult sensitivity reference (3–8 h): —</p>
-      <p class="hero-empty" id="hero-empty">Add your first caffeine intake below</p>
+      <p class="hero-empty" id="hero-empty">Add your first intake below</p>
     </section>
 
     <div class="daily-summary" aria-label="Today's caffeine summary">
       <div class="daily-stat">
-        <div class="daily-stat-value" id="daily-consumed">0</div>
-        <div class="daily-stat-label">Consumed today (mg)</div>
+        <div class="daily-stat-value"><span id="daily-consumed">0</span><span class="daily-stat-unit"> mg</span></div>
+        <div class="daily-stat-label">Consumed today</div>
       </div>
       <div class="daily-stat">
         <div class="daily-stat-value" id="daily-entries">0</div>
-        <div class="daily-stat-label">Completed entries today</div>
+        <div class="daily-stat-label">Entries today</div>
       </div>
     </div>
 
     <section class="halflife-config" aria-labelledby="halflife-heading">
       <div class="halflife-copy">
         <span class="halflife-label" id="halflife-heading">Selected half-life</span>
-        <span class="halflife-note">Adult nominal: 5 h · sensitivity reference: 3–8 h</span>
+        <span class="halflife-note">Default: 5 h · Reference range: 3–8 h</span>
       </div>
       <div class="halflife-controls">
         <button class="halflife-btn" id="hl-dec" aria-label="Decrease half-life by 0.5 hours" type="button">&minus;</button>
@@ -76,7 +76,7 @@
     <section class="concentration-config" aria-labelledby="conc-heading">
       <div class="conc-copy">
         <span class="conc-label" id="conc-heading">Estimated concentration</span>
-        <span class="conc-note">Optional — enter body weight to see estimated plasma concentration</span>
+        <span class="conc-note">Enter body weight to display estimated plasma concentration</span>
       </div>
       <div class="conc-inputs">
         <div class="conc-group">
@@ -131,14 +131,14 @@
         <button class="btn-clear" id="btn-clear-all" type="button" hidden>Clear all</button>
       </div>
       <ul class="intake-list" id="intake-list">
-        <li class="empty-message" id="empty-intakes">No caffeine intakes recorded</li>
+        <li class="empty-message" id="empty-intakes">No intakes recorded</li>
       </ul>
     </section>
 
     <section class="card" aria-labelledby="projection-heading">
       <div class="card-header-group">
         <h2 class="card-header no-border" id="projection-heading">Projection</h2>
-        <p class="card-subtitle">Selected model plus 3–8 h adult sensitivity reference</p>
+        <p class="card-subtitle">Selected model with 3–8 h sensitivity reference</p>
       </div>
       <div class="projection-list" id="projection-list"></div>
     </section>
@@ -157,21 +157,21 @@
     </section>
 
     <section class="model-card" aria-labelledby="model-heading">
-      <h2 id="model-heading">How this estimate works</h2>
-      <p>Each completed intake is treated as a separate dose and decays independently using a one-compartment, first-order model. The simple mg-remaining view assumes the dose is available immediately at the recorded intake time.</p>
-      <p>The 3–8 hour values are a practical adult sensitivity reference, not a confidence interval and not a personalized biological range.</p>
+      <h2 id="model-heading">About This Model</h2>
+      <p>Each intake decays independently using a one-compartment, first-order elimination model. The mg remaining view assumes the dose is fully available at the recorded intake time.</p>
+      <p>The 3–8 h reference values represent a practical adult sensitivity range, not a confidence interval or personalized biological range.</p>
     </section>
 
     <footer class="app-footer">
-      Estimates parent caffeine remaining under the selected model; it is not a blood measurement.<br>
-      All records stay in this browser. No analytics, telemetry, or remote API calls.
+      Estimates parent caffeine remaining under the selected model. Not a blood measurement.<br>
+      All data stays in this browser. No analytics, telemetry, or remote calls.
     </footer>
   </main>
 
   <div class="modal-overlay" id="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title" hidden>
     <div class="modal">
       <div class="modal-header">
-        <h2 class="modal-title" id="edit-title">Edit intake</h2>
+        <h2 class="modal-title" id="edit-title">Edit Intake</h2>
         <button class="modal-close" id="modal-close" aria-label="Close edit dialog" type="button">&times;</button>
       </div>
       <div class="modal-body">

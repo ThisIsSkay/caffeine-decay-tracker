@@ -267,7 +267,7 @@
       heroEmpty.hidden = false;
       heroRange.hidden = true;
       heroConcentration.hidden = true;
-      setText(heroEmpty, "Add your first caffeine intake below");
+      setText(heroEmpty, "Add your first intake below");
       return;
     }
 
@@ -327,7 +327,7 @@
   function renderIntakeList() {
     var now = Date.now();
     if (entries.length === 0) {
-      intakeList.innerHTML = '<li class="empty-message" id="empty-intakes">No caffeine intakes recorded</li>';
+      intakeList.innerHTML = '<li class="empty-message" id="empty-intakes">No intakes recorded</li>';
       btnClearAll.hidden = true;
       return;
     }
