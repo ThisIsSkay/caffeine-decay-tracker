@@ -135,6 +135,57 @@ button { -webkit-tap-highlight-color: transparent; }
 .halflife-unit { color: var(--text-dim); font-size: 12px; }
 .inline-error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: 12px; }
 
+.hero-concentration {
+  margin: 10px 0 0;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.hero-concentration strong { color: var(--caffeine); font-weight: 700; }
+
+.preset-config {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.preset-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.preset-label { color: var(--text); font-size: 13px; font-weight: 650; white-space: nowrap; }
+.preset-select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239aabb8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+.preset-range { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; }
+
+.concentration-config {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.conc-copy { margin-bottom: 10px; }
+.conc-label { display: block; color: var(--text); font-size: 13px; font-weight: 650; }
+.conc-note { display: block; margin-top: 2px; color: var(--text-muted); font-size: 10px; }
+.conc-inputs { display: flex; gap: 12px; }
+.conc-group { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.conc-input { font-size: 14px; padding: 9px 10px; }
+.conc-disclaimer { margin: 8px 0 0; color: var(--text-muted); font-size: 10px; font-style: italic; }
+
 .card {
   margin-bottom: 16px;
   overflow: hidden;
@@ -287,6 +338,8 @@ button { -webkit-tap-highlight-color: transparent; }
   .projection-range { font-size: 8px; }
   .daily-stat-label { font-size: 9px; }
   .intake-meta { gap: 7px; }
+  .preset-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .conc-inputs { flex-direction: column; gap: 10px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {

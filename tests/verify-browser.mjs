@@ -221,6 +221,65 @@ try {
   await page.setViewportSize({ width: 375, height: 667 });
   check("no horizontal overflow at 375px", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
 
+  console.log("\nPreset selection");
+  await page.selectOption("#preset-select", "typical");
+  check("typical preset sets half-life to 5.0", await page.inputValue("#halflife-input"), "5.0");
+  check("preset range shows literature range", (await page.textContent("#preset-range")).includes("2.7–9.9 h"), true);
+  await page.selectOption("#preset-select", "smoker");
+  check("smoker preset sets half-life to 3.5", await page.inputValue("#halflife-input"), "3.5");
+  check("smoker range updates", (await page.textContent("#preset-range")).includes("2.3–3.7 h"), true);
+  await page.selectOption("#preset-select", "pregnancy");
+  check("pregnancy preset sets half-life to 10.5", await page.inputValue("#halflife-input"), "10.5");
+  await page.fill("#halflife-input", "6");
+  await page.locator("#halflife-input").blur();
+  check("manual half-life switches to custom", await page.inputValue("#preset-select"), "custom");
+  check("custom range message", (await page.textContent("#preset-range")).includes("manually"), true);
+  await page.selectOption("#preset-select", "typical");
+  check("switching back to typical resets half-life", await page.inputValue("#halflife-input"), "5.0");
+
+  console.log("\nConcentration display");
+  check("concentration hidden without weight", await page.isHidden("#hero-concentration"), true);
+  await page.fill("#input-weight", "70");
+  await page.locator("#input-weight").blur();
+  check("concentration visible with weight", await page.isVisible("#hero-concentration"), true);
+  const concText = await page.textContent("#hero-conc-value");
+  check("concentration is a positive number", parseFloat(concText) > 0, true);
+  await page.selectOption("#vd-select", "0.45");
+  const concAfterVd = parseFloat(await page.textContent("#hero-conc-value"));
+  check("lower Vd increases concentration", concAfterVd > parseFloat(concText), true);
+  await page.selectOption("#vd-select", "0.60");
+  await page.fill("#input-weight", "");
+  await page.locator("#input-weight").blur();
+  check("clearing weight hides concentration", await page.isHidden("#hero-concentration"), true);
+  await page.fill("#input-weight", "5");
+  await page.locator("#input-weight").blur();
+  check("invalid weight (too low) clears input", await page.inputValue("#input-weight"), "");
+  check("concentration hidden for invalid weight", await page.isHidden("#hero-concentration"), true);
+
+  console.log("\nConcentration and preset persistence");
+  await page.fill("#input-weight", "65");
+  await page.locator("#input-weight").blur();
+  await page.selectOption("#preset-select", "oc");
+  await page.selectOption("#vd-select", "0.45");
+  await page.reload();
+  check("weight persists after reload", await page.inputValue("#input-weight"), "65");
+  check("preset persists after reload", await page.inputValue("#preset-select"), "oc");
+  check("half-life persists with preset", await page.inputValue("#halflife-input"), "8.0");
+  check("Vd persists after reload", await page.inputValue("#vd-select"), "0.45");
+  check("concentration visible after reload", await page.isVisible("#hero-concentration"), true);
+
+  console.log("\nInvalid stored preset/weight/Vd fallback");
+  await page.evaluate(() => {
+    localStorage.setItem("caffeine-preset", "nonexistent");
+    localStorage.setItem("caffeine-weight", "abc");
+    localStorage.setItem("caffeine-vd", "-1");
+  });
+  await page.reload();
+  check("invalid preset falls back to typical", await page.inputValue("#preset-select"), "typical");
+  check("invalid weight falls back to empty", await page.inputValue("#input-weight"), "");
+  check("invalid Vd falls back to 0.60", await page.inputValue("#vd-select"), "0.60");
+  await page.selectOption("#preset-select", "typical");
+
   console.log("\nCross-tab localStorage synchronization");
   const syncContext = await browser.newContext({ timezoneId: "Asia/Singapore" });
   const syncPageA = await syncContext.newPage();

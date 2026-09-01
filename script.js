@@ -10,10 +10,16 @@
 
   var STORAGE_KEY_ENTRIES = "caffeine-entries";
   var STORAGE_KEY_HALFLIFE = "caffeine-halflife";
+  var STORAGE_KEY_PRESET = "caffeine-preset";
+  var STORAGE_KEY_WEIGHT = "caffeine-weight";
+  var STORAGE_KEY_VD = "caffeine-vd";
   var UPDATE_INTERVAL_MS = 10000;
 
   var entries = [];
   var halfLife = model.DEFAULT_HALF_LIFE_HOURS;
+  var activePreset = "typical";
+  var bodyWeight = null;
+  var vd = model.DEFAULT_VD_L_PER_KG;
   var editingId = null;
   var updateTimer = null;
   var resizeRaf = null;
@@ -49,6 +55,12 @@
   var editLabel = document.getElementById("edit-label");
   var editError = document.getElementById("edit-error");
   var btnClearAll = document.getElementById("btn-clear-all");
+  var presetSelect = document.getElementById("preset-select");
+  var presetRange = document.getElementById("preset-range");
+  var inputWeight = document.getElementById("input-weight");
+  var vdSelect = document.getElementById("vd-select");
+  var heroConcentration = document.getElementById("hero-concentration");
+  var heroConcValue = document.getElementById("hero-conc-value");
 
   function readStored(key, fallback) {
     try {
@@ -133,6 +145,37 @@
     if (raw === null) return model.DEFAULT_HALF_LIFE_HOURS;
     var value = Number(raw);
     return model.validateHalfLife(value) ? value : model.DEFAULT_HALF_LIFE_HOURS;
+  }
+
+  function savePreset() {
+    writeStored(STORAGE_KEY_PRESET, activePreset);
+  }
+
+  function loadPreset() {
+    var raw = readStored(STORAGE_KEY_PRESET, "typical");
+    if (raw === "custom" || model.getPresetById(raw)) return raw;
+    return "typical";
+  }
+
+  function saveWeight() {
+    writeStored(STORAGE_KEY_WEIGHT, bodyWeight !== null ? String(bodyWeight) : "");
+  }
+
+  function loadWeight() {
+    var raw = readStored(STORAGE_KEY_WEIGHT, "");
+    if (raw === "") return null;
+    var value = Number(raw);
+    return model.validateBodyWeight(value) ? value : null;
+  }
+
+  function saveVd() {
+    writeStored(STORAGE_KEY_VD, String(vd));
+  }
+
+  function loadVd() {
+    var raw = readStored(STORAGE_KEY_VD, String(model.DEFAULT_VD_L_PER_KG));
+    var value = Number(raw);
+    return model.validateVd(value) ? value : model.DEFAULT_VD_L_PER_KG;
   }
 
   function generateId() {
@@ -223,6 +266,7 @@
       heroAmount.hidden = true;
       heroEmpty.hidden = false;
       heroRange.hidden = true;
+      heroConcentration.hidden = true;
       setText(heroEmpty, "Add your first caffeine intake below");
       return;
     }
@@ -232,6 +276,7 @@
       heroAmount.hidden = true;
       heroEmpty.hidden = false;
       heroRange.hidden = true;
+      heroConcentration.hidden = true;
       setText(heroEmpty, "Unable to calculate with the current saved data");
       return;
     }
@@ -246,6 +291,18 @@
       "Adult sensitivity reference (3–8 h): " +
       sensitivity.referenceLow.toFixed(1) + "–" + sensitivity.referenceHigh.toFixed(1) + " mg"
     );
+
+    if (bodyWeight !== null) {
+      var conc = model.calculateConcentration(sensitivity.selected, bodyWeight, vd);
+      if (conc !== null) {
+        heroConcentration.hidden = false;
+        setText(heroConcValue, conc.toFixed(2));
+      } else {
+        heroConcentration.hidden = true;
+      }
+    } else {
+      heroConcentration.hidden = true;
+    }
   }
 
   function renderDailySummary() {
@@ -471,6 +528,22 @@
     halflifeInput.value = halfLife.toFixed(1);
     showError(halflifeError, "");
     saveHalfLife();
+
+    var matchedPreset = false;
+    for (var i = 0; i < model.HALF_LIFE_PRESETS.length; i++) {
+      if (model.HALF_LIFE_PRESETS[i].halfLife === rounded &&
+          model.HALF_LIFE_PRESETS[i].id === activePreset) {
+        matchedPreset = true;
+        break;
+      }
+    }
+    if (!matchedPreset) {
+      activePreset = "custom";
+      presetSelect.value = "custom";
+      setText(presetRange, "Set half-life manually above");
+      savePreset();
+    }
+
     renderAll();
     return true;
   }
@@ -483,6 +556,44 @@
   });
   halflifeInput.addEventListener("change", function () {
     setHalfLife(halflifeInput.value);
+  });
+
+  presetSelect.addEventListener("change", function () {
+    var selected = presetSelect.value;
+    activePreset = selected;
+    savePreset();
+    if (selected === "custom") {
+      setText(presetRange, "Set half-life manually above");
+      return;
+    }
+    var preset = model.getPresetById(selected);
+    if (preset) {
+      setHalfLife(preset.halfLife);
+      setText(presetRange, "Literature range: " + preset.range);
+    }
+  });
+
+  inputWeight.addEventListener("change", function () {
+    var raw = inputWeight.value.trim();
+    if (raw === "") {
+      bodyWeight = null;
+    } else {
+      var value = Number(raw);
+      if (model.validateBodyWeight(value)) {
+        bodyWeight = value;
+      } else {
+        bodyWeight = null;
+        inputWeight.value = "";
+      }
+    }
+    saveWeight();
+    renderAll();
+  });
+
+  vdSelect.addEventListener("change", function () {
+    vd = Number(vdSelect.value);
+    saveVd();
+    renderAll();
   });
 
   function validateEntryForm(amountValue, dateValue, timeValue) {
@@ -623,27 +734,44 @@
     });
   });
 
+  var WATCHED_KEYS = [
+    STORAGE_KEY_ENTRIES, STORAGE_KEY_HALFLIFE,
+    STORAGE_KEY_PRESET, STORAGE_KEY_WEIGHT, STORAGE_KEY_VD
+  ];
+
   window.addEventListener("storage", function (event) {
-    if (event.key !== null &&
-        event.key !== STORAGE_KEY_ENTRIES &&
-        event.key !== STORAGE_KEY_HALFLIFE) {
+    if (event.key !== null && WATCHED_KEYS.indexOf(event.key) === -1) {
       return;
     }
 
     if (!editModal.hidden) closeEditModal();
     entries = loadEntries();
     halfLife = loadHalfLife();
+    activePreset = loadPreset();
+    bodyWeight = loadWeight();
+    vd = loadVd();
     halflifeInput.value = halfLife.toFixed(1);
-    // Rewrite normalized entries (for example duplicate/unsafe restored IDs).
+    presetSelect.value = activePreset;
+    inputWeight.value = bodyWeight !== null ? bodyWeight : "";
+    vdSelect.value = vd.toFixed(2);
+    var preset = model.getPresetById(activePreset);
+    setText(presetRange, preset ? "Literature range: " + preset.range : "Set half-life manually above");
     saveEntries();
     renderAll();
   });
 
   entries = loadEntries();
   halfLife = loadHalfLife();
-  // Persist the normalized form of restored entries when storage is available.
+  activePreset = loadPreset();
+  bodyWeight = loadWeight();
+  vd = loadVd();
   saveEntries();
   halflifeInput.value = halfLife.toFixed(1);
+  presetSelect.value = activePreset;
+  inputWeight.value = bodyWeight !== null ? bodyWeight : "";
+  vdSelect.value = vd.toFixed(2);
+  var initPreset = model.getPresetById(activePreset);
+  setText(presetRange, initPreset ? "Literature range: " + initPreset.range : "Set half-life manually above");
   setFormDefaults();
   renderAll();
   startUpdates();

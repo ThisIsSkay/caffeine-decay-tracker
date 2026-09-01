@@ -18,8 +18,22 @@ var SENSITIVITY_SLOW_HOURS = 8;
 var LITERATURE_HALF_LIFE_MIN_HOURS = 1.5;
 var LITERATURE_HALF_LIFE_MAX_HOURS = 9.5;
 var DOSE_MAX = 5000;
+var DEFAULT_VD_L_PER_KG = 0.60;
+var OBESITY_VD_L_PER_KG = 0.45;
+var BODY_WEIGHT_MIN_KG = 20;
+var BODY_WEIGHT_MAX_KG = 300;
 // ECMAScript Date's TimeClip range is ±8.64e15 ms from the Unix epoch.
 var MAX_DATE_TIMESTAMP = 8640000000000000;
+
+var HALF_LIFE_PRESETS = [
+  { id: "typical",    label: "Typical healthy adult",      halfLife: 5.0,  range: "2.7–9.9 h" },
+  { id: "smoker",     label: "Current cigarette smoker",   halfLife: 3.5,  range: "2.3–3.7 h" },
+  { id: "oc",         label: "Estrogen-containing OC",     halfLife: 8.0,  range: "7.9–10.7 h" },
+  { id: "pregnancy",  label: "Late pregnancy",             halfLife: 10.5, range: "10.5–15.1 h" },
+  { id: "older",      label: "Older adult (65+)",          halfLife: 5.0,  range: "2.3–9.9 h" },
+  { id: "cirrhosis",  label: "Compensated cirrhosis",      halfLife: 4.0,  range: "1.1–8.4 h" },
+  { id: "heavy",      label: "Heavy habitual use",         halfLife: 5.0,  range: "2.7–9.9 h" }
+];
 
 function isFiniteNumber(n) {
   return typeof n === "number" && Number.isFinite(n);
@@ -203,6 +217,38 @@ function generateChartData(entries, startTimestamp, endTimestamp, halfLifeHours,
   return points;
 }
 
+function validateBodyWeight(kg) {
+  return isFiniteNumber(kg) && kg >= BODY_WEIGHT_MIN_KG && kg <= BODY_WEIGHT_MAX_KG;
+}
+
+function validateVd(vd) {
+  return isFiniteNumber(vd) && vd > 0 && vd <= 2;
+}
+
+function calculateConcentration(remainingMg, bodyWeightKg, vdLPerKg) {
+  if (!isFiniteNumber(remainingMg) || remainingMg < 0) return null;
+  if (!validateBodyWeight(bodyWeightKg)) return null;
+  if (!validateVd(vdLPerKg)) return null;
+
+  var volumeL = bodyWeightKg * vdLPerKg;
+  if (volumeL <= 0) return null;
+  var concentration = remainingMg / volumeL;
+  return isFiniteNumber(concentration) ? concentration : null;
+}
+
+function calculateTotalConcentration(entries, queryTimestamp, halfLifeHours, bodyWeightKg, vdLPerKg) {
+  var remaining = calculateTotalRemaining(entries, queryTimestamp, halfLifeHours);
+  if (remaining === null) return null;
+  return calculateConcentration(remaining, bodyWeightKg, vdLPerKg);
+}
+
+function getPresetById(id) {
+  for (var i = 0; i < HALF_LIFE_PRESETS.length; i++) {
+    if (HALF_LIFE_PRESETS[i].id === id) return HALF_LIFE_PRESETS[i];
+  }
+  return null;
+}
+
 function formatElapsed(ms) {
   if (!isFiniteNumber(ms)) return "—";
   if (ms < 0) return "not yet";
@@ -221,13 +267,23 @@ var exported = {
   LITERATURE_HALF_LIFE_MAX_HOURS: LITERATURE_HALF_LIFE_MAX_HOURS,
   DOSE_MAX: DOSE_MAX,
   MAX_DATE_TIMESTAMP: MAX_DATE_TIMESTAMP,
+  DEFAULT_VD_L_PER_KG: DEFAULT_VD_L_PER_KG,
+  OBESITY_VD_L_PER_KG: OBESITY_VD_L_PER_KG,
+  BODY_WEIGHT_MIN_KG: BODY_WEIGHT_MIN_KG,
+  BODY_WEIGHT_MAX_KG: BODY_WEIGHT_MAX_KG,
+  HALF_LIFE_PRESETS: HALF_LIFE_PRESETS,
   validateHalfLife: validateHalfLife,
   validateDose: validateDose,
   validateTimestamp: validateTimestamp,
+  validateBodyWeight: validateBodyWeight,
+  validateVd: validateVd,
   calculateRemaining: calculateRemaining,
   calculateTotalRemaining: calculateTotalRemaining,
   calculateProjection: calculateProjection,
   calculateSensitivity: calculateSensitivity,
+  calculateConcentration: calculateConcentration,
+  calculateTotalConcentration: calculateTotalConcentration,
+  getPresetById: getPresetById,
   getLocalDayBounds: getLocalDayBounds,
   calculateDailyConsumed: calculateDailyConsumed,
   calculateDailyEntryCount: calculateDailyEntryCount,

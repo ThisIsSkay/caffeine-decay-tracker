@@ -20,6 +20,9 @@
       <p class="hero-amount" id="hero-amount">
         <span id="hero-value">0.0</span><span class="hero-unit"> mg</span>
       </p>
+      <p class="hero-concentration" id="hero-concentration" hidden>
+        Est. concentration: <strong><span id="hero-conc-value">0.00</span> mg/L</strong>
+      </p>
       <p class="hero-model-line">Selected model: <strong><span id="hero-model">5.0</span> h half-life</strong></p>
       <p class="hero-range" id="hero-range" hidden>Adult sensitivity reference (3–8 h): —</p>
       <p class="hero-empty" id="hero-empty">Add your first caffeine intake below</p>
@@ -51,6 +54,45 @@
         <button class="halflife-btn" id="hl-inc" aria-label="Increase half-life by 0.5 hours" type="button">+</button>
       </div>
       <p class="inline-error" id="halflife-error" role="alert" hidden></p>
+    </section>
+
+    <section class="preset-config" aria-labelledby="preset-heading">
+      <div class="preset-row">
+        <label class="preset-label" id="preset-heading" for="preset-select">Scenario preset</label>
+        <select class="preset-select" id="preset-select">
+          <option value="custom">Custom</option>
+          <option value="typical" selected>Typical healthy adult — 5.0 h</option>
+          <option value="smoker">Current cigarette smoker — 3.5 h</option>
+          <option value="oc">Estrogen-containing OC — 8.0 h</option>
+          <option value="pregnancy">Late pregnancy — 10.5 h</option>
+          <option value="older">Older adult (65+) — 5.0 h</option>
+          <option value="cirrhosis">Compensated cirrhosis — 4.0 h</option>
+          <option value="heavy">Heavy habitual use — 5.0 h</option>
+        </select>
+      </div>
+      <p class="preset-range" id="preset-range">Literature range: 2.7–9.9 h</p>
+    </section>
+
+    <section class="concentration-config" aria-labelledby="conc-heading">
+      <div class="conc-copy">
+        <span class="conc-label" id="conc-heading">Estimated concentration</span>
+        <span class="conc-note">Optional — enter body weight to see estimated plasma concentration</span>
+      </div>
+      <div class="conc-inputs">
+        <div class="conc-group">
+          <label class="form-label" for="input-weight">Body weight (kg)</label>
+          <input type="number" class="form-input conc-input" id="input-weight"
+                 min="20" max="300" step="0.1" inputmode="decimal" placeholder="70">
+        </div>
+        <div class="conc-group">
+          <label class="form-label" for="vd-select">Distribution volume</label>
+          <select class="form-input conc-input" id="vd-select">
+            <option value="0.60">Standard (0.60 L/kg)</option>
+            <option value="0.45">Obesity-adjusted (0.45 L/kg)</option>
+          </select>
+        </div>
+      </div>
+      <p class="conc-disclaimer">Model estimate of apparent distribution, not a blood measurement.</p>
     </section>
 
     <section class="card" aria-labelledby="add-heading">

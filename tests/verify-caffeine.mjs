@@ -142,6 +142,58 @@ check("chart first point exact", chart[0].remaining, 200, 1e-12);
 check("chart last point exact", chart[10].remaining, 50, 1e-12);
 check("bad chart interval rejected", model.generateChartData([], 10, 5, 5, 10), null);
 
+console.log("\nHalf-life presets");
+check("presets array is non-empty", model.HALF_LIFE_PRESETS.length >= 7, true);
+check("typical preset exists", model.getPresetById("typical").halfLife, 5.0);
+check("smoker preset", model.getPresetById("smoker").halfLife, 3.5);
+check("OC preset", model.getPresetById("oc").halfLife, 8.0);
+check("pregnancy preset", model.getPresetById("pregnancy").halfLife, 10.5);
+check("cirrhosis preset", model.getPresetById("cirrhosis").halfLife, 4.0);
+check("unknown preset returns null", model.getPresetById("nonexistent"), null);
+check("all presets have valid half-lives", model.HALF_LIFE_PRESETS.every(p => model.validateHalfLife(p.halfLife)), true);
+check("all presets have unique IDs", new Set(model.HALF_LIFE_PRESETS.map(p => p.id)).size, model.HALF_LIFE_PRESETS.length);
+check("all presets have labels", model.HALF_LIFE_PRESETS.every(p => typeof p.label === "string" && p.label.length > 0), true);
+check("all presets have range strings", model.HALF_LIFE_PRESETS.every(p => typeof p.range === "string" && p.range.length > 0), true);
+
+console.log("\nConcentration calculation");
+check("200mg in 70kg at 0.60 Vd", model.calculateConcentration(200, 70, 0.60), 200 / (70 * 0.60), 1e-12);
+check("200mg in 70kg at 0.45 Vd", model.calculateConcentration(200, 70, 0.45), 200 / (70 * 0.45), 1e-12);
+check("zero remaining → zero concentration", model.calculateConcentration(0, 70, 0.60), 0, 1e-12);
+check("research test vector: 200mg, 70kg, 5h half-life, 5h elapsed",
+  model.calculateConcentration(200 * Math.pow(0.5, 5/5), 70, 0.60),
+  100 / (70 * 0.60), 1e-12);
+const concAt5h = model.calculateConcentration(100, 70, 0.60);
+check("test vector ≈ 2.381 mg/L", concAt5h, 2.380952380952381, 0.001);
+check("invalid weight rejected (too low)", model.calculateConcentration(100, 10, 0.60), null);
+check("invalid weight rejected (too high)", model.calculateConcentration(100, 400, 0.60), null);
+check("invalid weight rejected (NaN)", model.calculateConcentration(100, NaN, 0.60), null);
+check("invalid Vd rejected (zero)", model.calculateConcentration(100, 70, 0), null);
+check("invalid Vd rejected (negative)", model.calculateConcentration(100, 70, -0.5), null);
+check("invalid Vd rejected (too large)", model.calculateConcentration(100, 70, 3), null);
+check("negative remaining rejected", model.calculateConcentration(-50, 70, 0.60), null);
+
+console.log("\nTotal concentration (integrated)");
+const concEntries = [
+  { doseMg: 200, intakeTimestamp: 0 },
+  { doseMg: 150, intakeTimestamp: h(2) }
+];
+const totalRemAt5 = model.calculateTotalRemaining(concEntries, h(5), 5);
+const expectedConc = totalRemAt5 / (70 * 0.60);
+check("total concentration matches manual calc", model.calculateTotalConcentration(concEntries, h(5), 5, 70, 0.60), expectedConc, 1e-12);
+check("total concentration with invalid weight", model.calculateTotalConcentration(concEntries, h(5), 5, 10, 0.60), null);
+
+console.log("\nBody weight and Vd validation");
+check("20kg valid (minimum)", model.validateBodyWeight(20), true);
+check("300kg valid (maximum)", model.validateBodyWeight(300), true);
+check("19kg invalid", model.validateBodyWeight(19), false);
+check("301kg invalid", model.validateBodyWeight(301), false);
+check("NaN weight invalid", model.validateBodyWeight(NaN), false);
+check("Vd 0.60 valid", model.validateVd(0.60), true);
+check("Vd 0.45 valid", model.validateVd(0.45), true);
+check("Vd 1.5 valid", model.validateVd(1.5), true);
+check("Vd 0 invalid", model.validateVd(0), false);
+check("Vd 2.1 invalid", model.validateVd(2.1), false);
+
 console.log("\nFormatting");
 check("0ms elapsed", model.formatElapsed(0), "0m");
 check("30min elapsed", model.formatElapsed(30 * 60000), "30m");
