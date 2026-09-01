@@ -18,6 +18,8 @@ var SENSITIVITY_SLOW_HOURS = 8;
 var LITERATURE_HALF_LIFE_MIN_HOURS = 1.5;
 var LITERATURE_HALF_LIFE_MAX_HOURS = 9.5;
 var DOSE_MAX = 5000;
+// ECMAScript Date's TimeClip range is ±8.64e15 ms from the Unix epoch.
+var MAX_DATE_TIMESTAMP = 8640000000000000;
 
 function isFiniteNumber(n) {
   return typeof n === "number" && Number.isFinite(n);
@@ -32,7 +34,7 @@ function validateDose(mg) {
 }
 
 function validateTimestamp(timestamp) {
-  return isFiniteNumber(timestamp);
+  return isFiniteNumber(timestamp) && Math.abs(timestamp) <= MAX_DATE_TIMESTAMP;
 }
 
 function calculateRemaining(doseMg, intakeTimestamp, queryTimestamp, halfLifeHours) {
@@ -46,7 +48,8 @@ function calculateRemaining(doseMg, intakeTimestamp, queryTimestamp, halfLifeHou
   if (elapsedMs < 0) return 0;
 
   var elapsedHours = elapsedMs / 3600000;
-  return doseMg * Math.pow(0.5, elapsedHours / halfLifeHours);
+  var remaining = doseMg * Math.pow(0.5, elapsedHours / halfLifeHours);
+  return isFiniteNumber(remaining) && remaining >= 0 ? remaining : null;
 }
 
 function calculateTotalRemaining(entries, queryTimestamp, halfLifeHours) {
@@ -65,6 +68,7 @@ function calculateTotalRemaining(entries, queryTimestamp, halfLifeHours) {
     );
     if (remaining === null) return null;
     total += remaining;
+    if (!isFiniteNumber(total) || total < 0) return null;
   }
   return total;
 }
@@ -159,6 +163,7 @@ function generateProjectionSeries(entries, nowTimestamp, halfLifeHours, steps) {
     var offset = Number(steps[i]);
     if (!Number.isFinite(offset)) return null;
     var timestamp = nowTimestamp + offset * 3600000;
+    if (!validateTimestamp(timestamp)) return null;
     var sensitivity = calculateSensitivity(entries, timestamp, halfLifeHours);
     if (!sensitivity) return null;
     series.push({
@@ -183,6 +188,7 @@ function generateChartData(entries, startTimestamp, endTimestamp, halfLifeHours,
   var points = [];
   for (var i = 0; i <= pointCount; i++) {
     var timestamp = startTimestamp + step * i;
+    if (!validateTimestamp(timestamp)) return null;
     var sensitivity = calculateSensitivity(entries, timestamp, halfLifeHours);
     if (!sensitivity) return null;
     points.push({
@@ -214,6 +220,7 @@ var exported = {
   LITERATURE_HALF_LIFE_MIN_HOURS: LITERATURE_HALF_LIFE_MIN_HOURS,
   LITERATURE_HALF_LIFE_MAX_HOURS: LITERATURE_HALF_LIFE_MAX_HOURS,
   DOSE_MAX: DOSE_MAX,
+  MAX_DATE_TIMESTAMP: MAX_DATE_TIMESTAMP,
   validateHalfLife: validateHalfLife,
   validateDose: validateDose,
   validateTimestamp: validateTimestamp,

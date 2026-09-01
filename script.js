@@ -71,6 +71,24 @@
     writeStored(STORAGE_KEY_ENTRIES, JSON.stringify(entries));
   }
 
+  function isSafeEntryId(id) {
+    return typeof id === "string" &&
+      id.length > 0 &&
+      id.length <= 128 &&
+      /^[A-Za-z0-9._:-]+$/.test(id);
+  }
+
+  function makeRestoredId(index, usedIds) {
+    var base = "restored-" + (index + 1);
+    var candidate = base;
+    var suffix = 2;
+    while (usedIds.indexOf(candidate) !== -1) {
+      candidate = base + "-" + suffix;
+      suffix++;
+    }
+    return candidate;
+  }
+
   function loadEntries() {
     var raw = readStored(STORAGE_KEY_ENTRIES, null);
     if (!raw) return [];
@@ -80,15 +98,21 @@
       if (!Array.isArray(parsed)) return [];
 
       var valid = [];
+      var usedIds = [];
       for (var i = 0; i < parsed.length; i++) {
         var entry = parsed[i];
         if (!entry || typeof entry !== "object") continue;
-        if (typeof entry.id !== "string" || !entry.id) continue;
         if (!model.validateDose(entry.doseMg)) continue;
         if (!model.validateTimestamp(entry.intakeTimestamp)) continue;
 
+        var id = entry.id;
+        if (!isSafeEntryId(id) || usedIds.indexOf(id) !== -1) {
+          id = makeRestoredId(i, usedIds);
+        }
+        usedIds.push(id);
+
         valid.push({
-          id: entry.id,
+          id: id,
           doseMg: entry.doseMg,
           intakeTimestamp: entry.intakeTimestamp,
           label: typeof entry.label === "string" ? entry.label.slice(0, 60) : ""
@@ -143,7 +167,7 @@
     if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
 
     var date = new Date(year, month - 1, day, hour, minute, 0, 0);
-    if (!Number.isFinite(date.getTime())) return null;
+    if (!model.validateTimestamp(date.getTime())) return null;
 
     // Reject silently-normalized impossible dates and DST spring-forward times.
     if (date.getFullYear() !== year ||
@@ -199,6 +223,7 @@
       heroAmount.hidden = true;
       heroEmpty.hidden = false;
       heroRange.hidden = true;
+      setText(heroEmpty, "Add your first caffeine intake below");
       return;
     }
 
@@ -230,9 +255,16 @@
   }
 
   function escapeHtml(value) {
-    var div = document.createElement("div");
-    div.textContent = value;
-    return div.innerHTML;
+    return String(value).replace(/[&<>"']/g, function (character) {
+      var replacements = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      };
+      return replacements[character];
+    });
   }
 
   function renderIntakeList() {
@@ -272,7 +304,7 @@
       html += '</div></li>';
     }
     intakeList.innerHTML = html;
-    btnClearAll.hidden = entries.length === 0;
+    btnClearAll.hidden = false;
   }
 
   function renderProjection() {
@@ -301,9 +333,9 @@
       html += '<span class="projection-time">' + (isNow ? "Now" : formatTime(point.timestamp)) + '</span>';
       html += '<div class="projection-center">';
       html += '<div class="projection-bar-container"><div class="projection-bar" style="width:' + percentage.toFixed(1) + '%"></div></div>';
-      html += '<span class="projection-range">3–8 h ref: ' + Math.round(point.referenceLow) + '–' + Math.round(point.referenceHigh) + ' mg</span>';
+      html += '<span class="projection-range">3–8 h ref: ' + point.referenceLow.toFixed(1) + '–' + point.referenceHigh.toFixed(1) + ' mg</span>';
       html += '</div>';
-      html += '<span class="projection-value">' + Math.round(point.remaining) + ' mg</span>';
+      html += '<span class="projection-value">' + point.remaining.toFixed(1) + ' mg</span>';
       html += '</div>';
     }
     projectionList.innerHTML = html;
@@ -325,7 +357,10 @@
     var startTimestamp = now - hoursBack * 3600000;
     var endTimestamp = now + 12 * 3600000;
     var data = model.generateChartData(entries, startTimestamp, endTimestamp, halfLife, 200);
-    if (!data || data.length === 0) return;
+    if (!data || data.length === 0) {
+      chartSvg.innerHTML = "";
+      return;
+    }
 
     var svgWidth = chartSvg.clientWidth || 480;
     var svgHeight = 190;
@@ -587,8 +622,26 @@
     });
   });
 
+  window.addEventListener("storage", function (event) {
+    if (event.key !== null &&
+        event.key !== STORAGE_KEY_ENTRIES &&
+        event.key !== STORAGE_KEY_HALFLIFE) {
+      return;
+    }
+
+    if (!editModal.hidden) closeEditModal();
+    entries = loadEntries();
+    halfLife = loadHalfLife();
+    halflifeInput.value = halfLife.toFixed(1);
+    // Rewrite normalized entries (for example duplicate/unsafe restored IDs).
+    saveEntries();
+    renderAll();
+  });
+
   entries = loadEntries();
   halfLife = loadHalfLife();
+  // Persist the normalized form of restored entries when storage is available.
+  saveEntries();
   halflifeInput.value = halfLife.toFixed(1);
   setFormDefaults();
   renderAll();
