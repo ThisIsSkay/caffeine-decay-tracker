@@ -49,7 +49,11 @@ const server = http.createServer(async (req, res) => {
 await new Promise(resolve => server.listen(port, "127.0.0.1", resolve));
 let browser;
 try {
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    args: ["--no-sandbox"]
+  });
   const context = await browser.newContext({ timezoneId: "Asia/Singapore" });
   const page = await context.newPage();
   const errors = [];

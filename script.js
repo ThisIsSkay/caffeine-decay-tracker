@@ -48,6 +48,7 @@
   var editDate = document.getElementById("edit-date");
   var editLabel = document.getElementById("edit-label");
   var editError = document.getElementById("edit-error");
+  var btnClearAll = document.getElementById("btn-clear-all");
 
   function readStored(key, fallback) {
     try {
@@ -238,6 +239,7 @@
     var now = Date.now();
     if (entries.length === 0) {
       intakeList.innerHTML = '<li class="empty-message" id="empty-intakes">No caffeine intakes recorded</li>';
+      btnClearAll.hidden = true;
       return;
     }
 
@@ -270,6 +272,7 @@
       html += '</div></li>';
     }
     intakeList.innerHTML = html;
+    btnClearAll.hidden = entries.length === 0;
   }
 
   function renderProjection() {
@@ -494,6 +497,13 @@
     } else if (action === "edit") {
       openEditModal(id, button);
     }
+  });
+
+  btnClearAll.addEventListener("click", function () {
+    if (!confirm("Clear all caffeine entries?")) return;
+    entries = [];
+    saveEntries();
+    renderAll();
   });
 
   function openEditModal(id, trigger) {
