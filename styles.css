@@ -232,9 +232,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .chart-line { fill: none; stroke: var(--caffeine); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-line-reference { fill: none; stroke: var(--reference); stroke-width: 1.1; stroke-dasharray: 5 4; opacity: .7; }
 .chart-line-reference.fast { opacity: .5; }
-.chart-now-line { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-now-line { stroke: var(--warning); stroke-width: 2; stroke-dasharray: 6 4; opacity: .9; }
 .chart-dose-line { stroke: var(--caffeine-dim); stroke-width: 1; stroke-dasharray: 2 3; opacity: .45; }
 .chart-axis-label { fill: var(--text-muted); font-size: 9px; font-family: inherit; }
+.chart-now-label { fill: var(--warning); font-size: 10px; font-weight: 700; font-family: inherit; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 5px 16px 0; color: var(--text-muted); font-size: 9px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend-line { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--caffeine); }

@@ -437,6 +437,7 @@
       '<polyline class="chart-line" points="' + selectedPoints + '"/>' +
       doseLines +
       '<line class="chart-now-line" x1="' + nowX + '" y1="' + padTop + '" x2="' + nowX + '" y2="' + (padTop + plotHeight) + '"/>' +
+      '<text class="chart-now-label" x="' + nowX + '" y="' + (padTop - 3) + '" text-anchor="middle">Now</text>' +
       labels + yLabels;
   }
 
