@@ -13,6 +13,7 @@
   var STORAGE_KEY_PRESET = "caffeine-preset";
   var STORAGE_KEY_WEIGHT = "caffeine-weight";
   var STORAGE_KEY_VD = "caffeine-vd";
+  var STORAGE_KEY_THEME = "caffeine-theme";
   var UPDATE_INTERVAL_MS = 10000;
 
   var entries = [];
@@ -63,6 +64,7 @@
   var vdSelect = document.getElementById("vd-select");
   var heroConcentration = document.getElementById("hero-concentration");
   var heroConcValue = document.getElementById("hero-conc-value");
+  var themeToggle = document.getElementById("theme-toggle");
 
   function readStored(key, fallback) {
     try {
@@ -525,8 +527,8 @@
     chartSvg.setAttribute("viewBox", "0 0 " + svgWidth + " " + svgHeight);
     chartSvg.innerHTML =
       '<defs><linearGradient id="chart-area-gradient" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0" stop-color="#00e676" stop-opacity="0.22"/>' +
-      '<stop offset="1" stop-color="#00e676" stop-opacity="0.01"/>' +
+      '<stop class="chart-grad-top" offset="0"/>' +
+      '<stop class="chart-grad-bottom" offset="1"/>' +
       '</linearGradient></defs>' +
       gridLines +
       '<polygon class="chart-area" points="' + areaPoints + '"/>' +
@@ -650,6 +652,58 @@
     }
 
     return { doseMg: dose, intakeTimestamp: timestamp };
+  }
+
+  function displayedTheme() {
+    var forced = document.documentElement.getAttribute("data-theme");
+    if (forced === "light" || forced === "dark") return forced;
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return prefersDark ? "dark" : "light";
+  }
+
+  function syncThemeChrome() {
+    var isDark = displayedTheme() === "dark";
+    if (themeToggle) {
+      themeToggle.setAttribute("aria-label", isDark ? "Switch to light theme" : "Switch to dark theme");
+    }
+    var forced = document.documentElement.getAttribute("data-theme");
+    var metas = document.querySelectorAll('meta[name="theme-color"]');
+    for (var i = 0; i < metas.length; i++) {
+      if (forced === "light" || forced === "dark") {
+        metas[i].setAttribute("content", forced === "dark" ? "#131916" : "#faf8f3");
+      } else {
+        metas[i].setAttribute("content", metas[i].getAttribute("media") === "(prefers-color-scheme: dark)" ? "#131916" : "#faf8f3");
+      }
+    }
+  }
+
+  function applyStoredTheme() {
+    var stored = readStored(STORAGE_KEY_THEME, null);
+    if (stored === "light" || stored === "dark") {
+      document.documentElement.setAttribute("data-theme", stored);
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    syncThemeChrome();
+  }
+
+  if (themeToggle) {
+    themeToggle.addEventListener("click", function () {
+      var next = displayedTheme() === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      writeStored(STORAGE_KEY_THEME, next);
+      syncThemeChrome();
+    });
+  }
+
+  if (window.matchMedia) {
+    var colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    var onSchemeChange = function () { syncThemeChrome(); };
+    if (typeof colorSchemeQuery.addEventListener === "function") {
+      colorSchemeQuery.addEventListener("change", onSchemeChange);
+    } else if (typeof colorSchemeQuery.addListener === "function") {
+      colorSchemeQuery.addListener(onSchemeChange);
+    }
   }
 
   var quickAdd = document.getElementById("quick-add");
@@ -794,6 +848,9 @@
   ];
 
   window.addEventListener("storage", function (event) {
+    if (event.key === STORAGE_KEY_THEME || event.key === null) {
+      applyStoredTheme();
+    }
     if (event.key !== null && WATCHED_KEYS.indexOf(event.key) === -1) {
       return;
     }
@@ -827,6 +884,15 @@
   var initPreset = model.getPresetById(activePreset);
   setText(presetRange, initPreset ? "Literature range: " + initPreset.range : "Set half-life manually above");
   setFormDefaults();
+  syncThemeChrome();
   renderAll();
   startUpdates();
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("./sw.js").catch(function () {
+        // Offline support is progressive enhancement; the app works without it.
+      });
+    });
+  }
 })();

@@ -83,9 +83,12 @@ This version therefore keeps the simple amount-remaining model intentionally. A 
 
 ```text
 index.html                 Page structure and accessible controls
-styles.css                 Responsive dark UI
+styles.css                 Responsive light/dark UI (Matcha & Cream palette)
 script.js                  UI, persistence, date/time validation, rendering
 caffeine-model.js          Pure calculation engine
+manifest.webmanifest       PWA install metadata (Android/iOS/iPadOS/desktop)
+sw.js                      Service worker: network-first with offline fallback
+icons/                     App icon (SVG source + generated PNGs)
 package.json               Test commands / Playwright dev dependency
 tests/verify-caffeine.mjs  Unit/invariant tests
 tests/verify-browser.mjs   Browser integration tests with deterministic clock
