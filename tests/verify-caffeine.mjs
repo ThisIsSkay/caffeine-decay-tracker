@@ -38,6 +38,8 @@ check("seconds affect result", model.calculateRemaining(200, 0, 1000, 5), 200 * 
 check("zero dose accepted", model.calculateRemaining(0, 0, h(5), 5), 0);
 check("future dose contributes zero", model.calculateRemaining(200, h(1), 0, 5), 0);
 check("exact intake timestamp contributes full dose", model.calculateRemaining(200, h(1), h(1), 5), 200);
+const underflowRemaining = model.calculateRemaining(5000, -model.MAX_DATE_TIMESTAMP, model.MAX_DATE_TIMESTAMP, 0.1);
+check("extreme valid elapsed time never becomes negative/NaN", Number.isFinite(underflowRemaining) && underflowRemaining >= 0, true);
 
 console.log("\nMultiple doses / superposition");
 const entries = [
@@ -80,6 +82,11 @@ check("5000.1mg invalid bound", model.validateDose(5000.1), false);
 check("invalid entries array returns null", model.calculateTotalRemaining(null, 0, 5), null);
 check("invalid entry returns null", model.calculateTotalRemaining([{doseMg:6000,intakeTimestamp:0}], 0, 5), null);
 check("invalid timestamp returns null", model.calculateRemaining(200, NaN, 0, 5), null);
+check("Date maximum timestamp is valid", model.validateTimestamp(model.MAX_DATE_TIMESTAMP), true);
+check("Date minimum timestamp is valid", model.validateTimestamp(-model.MAX_DATE_TIMESTAMP), true);
+check("finite timestamp above Date range is invalid", model.validateTimestamp(model.MAX_DATE_TIMESTAMP + 1), false);
+check("huge finite stored-style timestamp is invalid", model.validateTimestamp(1e300), false);
+check("calculation rejects unrepresentable Date timestamp", model.calculateRemaining(200, 1e300, 0, 5), null);
 
 console.log("\nDaily totals");
 process.env.TZ = "Asia/Singapore";
@@ -94,6 +101,19 @@ check("daily consumed excludes yesterday and same-day future", model.calculateDa
 check("daily entry count excludes same-day future", model.calculateDailyEntryCount(daily, now), 2);
 check("daily consumed later includes scheduled dose once reached", model.calculateDailyConsumed(daily, localTs(2026,8,31,15,0)), 425);
 check("cross-midnight elapsed remains exact", model.calculateRemaining(200, localTs(2026,8,30,23,0), localTs(2026,8,31,1,0), 5), 200 * Math.pow(0.5, 2/5), 1e-10);
+const newYearNow = localTs(2027, 1, 1, 1, 0);
+const newYearEntries = [
+  { doseMg: 100, intakeTimestamp: localTs(2026, 12, 31, 23, 0) },
+  { doseMg: 50, intakeTimestamp: localTs(2027, 1, 1, 0, 30) }
+];
+check("new-year daily total excludes prior-year dose", model.calculateDailyConsumed(newYearEntries, newYearNow), 50);
+check("prior-year dose still decays into new year", model.calculateTotalRemaining(newYearEntries, newYearNow, 5),
+  100 * Math.pow(0.5, 2/5) + 50 * Math.pow(0.5, 0.5/5), 1e-10);
+const leapNow = localTs(2028, 2, 29, 12, 0);
+check("leap-day daily total uses Feb 29 local date", model.calculateDailyConsumed([
+  { doseMg: 80, intakeTimestamp: localTs(2028, 2, 29, 9, 0) },
+  { doseMg: 40, intakeTimestamp: localTs(2028, 3, 1, 9, 0) }
+], leapNow), 80);
 
 console.log("\nDST-safe local calendar boundaries");
 process.env.TZ = "America/New_York";
@@ -115,6 +135,7 @@ check("projection +5h", series[1].remaining, 100, 1e-12);
 check("projection +10h", series[2].remaining, 50, 1e-12);
 check("projection carries 3h reference", series[1].fast, 200 * Math.pow(0.5,5/3), 1e-12);
 check("projection carries 8h reference", series[1].slow, 200 * Math.pow(0.5,5/8), 1e-12);
+check("projection rejects timestamp overflow", model.generateProjectionSeries([], model.MAX_DATE_TIMESTAMP, 5, [1]), null);
 const chart = model.generateChartData([{doseMg:200,intakeTimestamp:0}], 0, h(10), 5, 10);
 check("chart has pointCount + 1 samples", chart.length, 11);
 check("chart first point exact", chart[0].remaining, 200, 1e-12);
