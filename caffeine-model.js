@@ -26,13 +26,13 @@ var BODY_WEIGHT_MAX_KG = 300;
 var MAX_DATE_TIMESTAMP = 8640000000000000;
 
 var HALF_LIFE_PRESETS = [
-  { id: "typical",    label: "Typical healthy adult",      halfLife: 5.0,  range: "2.7–9.9 h" },
-  { id: "smoker",     label: "Current cigarette smoker",   halfLife: 3.5,  range: "2.3–3.7 h" },
-  { id: "oc",         label: "Estrogen-containing OC",     halfLife: 8.0,  range: "7.9–10.7 h" },
-  { id: "pregnancy",  label: "Late pregnancy",             halfLife: 10.5, range: "10.5–15.1 h" },
-  { id: "older",      label: "Older adult (65+)",          halfLife: 5.0,  range: "2.3–9.9 h" },
-  { id: "cirrhosis",  label: "Compensated cirrhosis",      halfLife: 4.0,  range: "1.1–8.4 h" },
-  { id: "heavy",      label: "Heavy habitual use",         halfLife: 5.0,  range: "2.7–9.9 h" }
+  { id: "typical",    label: "Typical Healthy Adult",      halfLife: 5.0,  range: "2.7–9.9 h" },
+  { id: "smoker",     label: "Current Cigarette Smoker",   halfLife: 3.5,  range: "2.3–3.7 h" },
+  { id: "oc",         label: "Estrogen-Containing OC",     halfLife: 8.0,  range: "7.9–10.7 h" },
+  { id: "pregnancy",  label: "Late Pregnancy",             halfLife: 10.5, range: "10.5–15.1 h" },
+  { id: "older",      label: "Older Adult (65+)",          halfLife: 5.0,  range: "2.3–9.9 h" },
+  { id: "cirrhosis",  label: "Compensated Cirrhosis",      halfLife: 4.0,  range: "1.1–8.4 h" },
+  { id: "heavy",      label: "Heavy Habitual Use",         halfLife: 5.0,  range: "2.7–9.9 h" }
 ];
 
 function isFiniteNumber(n) {
