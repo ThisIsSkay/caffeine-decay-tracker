@@ -11,7 +11,16 @@
 <body>
   <main class="app">
     <header class="app-header">
-      <h1 class="app-title">Caffeine Tracker</h1>
+      <div class="app-brand">
+        <span class="app-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 8h1a3 3 0 0 1 0 6h-1"/>
+            <path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/>
+            <path d="M7 2.5c0 1-.8 1.2-.8 2.2M11 2.5c0 1-.8 1.2-.8 2.2"/>
+          </svg>
+        </span>
+        <h1 class="app-title">Caffeine Tracker</h1>
+      </div>
       <p class="app-subtitle">First-order elimination model</p>
     </header>
 
@@ -23,9 +32,20 @@
       <p class="hero-concentration" id="hero-concentration" hidden>
         Estimated concentration: <strong><span id="hero-conc-value">0.00</span> mg/L</strong>
       </p>
-      <p class="hero-model-line">Model: <strong><span id="hero-model">5.0</span> h half-life</strong></p>
-      <p class="hero-range" id="hero-range" hidden>Adult sensitivity reference (3–8 h): —</p>
-      <p class="hero-empty" id="hero-empty">Add your first intake below</p>
+      <div class="hero-empty" id="hero-empty">
+        <span class="hero-empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 8h1a3 3 0 0 1 0 6h-1"/>
+            <path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/>
+            <path d="M7 2.5c0 1-.8 1.2-.8 2.2M11 2.5c0 1-.8 1.2-.8 2.2"/>
+          </svg>
+        </span>
+        <span class="hero-empty-text" id="hero-empty-text">Log your first coffee below to see it decay in real time</span>
+      </div>
+      <div class="hero-chips">
+        <p class="hero-chip hero-model-line">Model: <strong><span id="hero-model">5.0</span> h half-life</strong></p>
+        <p class="hero-chip hero-range" id="hero-range" hidden>Adult sensitivity reference (3–8 h): —</p>
+      </div>
     </section>
 
     <div class="daily-summary" aria-label="Today's caffeine summary">
@@ -39,65 +59,76 @@
       </div>
     </div>
 
-    <section class="halflife-config" aria-labelledby="halflife-heading">
-      <div class="halflife-copy">
-        <span class="halflife-label" id="halflife-heading">Selected half-life</span>
-        <span class="halflife-note">Default: 5 h · Reference range: 3–8 h</span>
-      </div>
-      <div class="halflife-controls">
-        <button class="halflife-btn" id="hl-dec" aria-label="Decrease half-life by 0.5 hours" type="button">&minus;</button>
-        <label for="halflife-input" class="sr-only">Half-life in hours</label>
-        <input type="number" class="halflife-input" id="halflife-input"
-               min="0.1" step="0.1" inputmode="decimal" value="5.0"
-               aria-describedby="halflife-heading halflife-error">
-        <span class="halflife-unit">hours</span>
-        <button class="halflife-btn" id="hl-inc" aria-label="Increase half-life by 0.5 hours" type="button">+</button>
-      </div>
-      <p class="inline-error" id="halflife-error" role="alert" hidden></p>
-    </section>
+    <section class="card settings-card" aria-label="Model settings">
+      <h2 class="card-header">Model settings</h2>
 
-    <section class="preset-config" aria-labelledby="preset-heading">
-      <div class="preset-row">
-        <label class="preset-label" id="preset-heading" for="preset-select">Scenario preset</label>
-        <select class="preset-select" id="preset-select">
-          <option value="custom">Custom</option>
-          <option value="typical" selected>Typical Healthy Adult — 5.0 h</option>
-          <option value="smoker">Current Cigarette Smoker — 3.5 h</option>
-          <option value="oc">Estrogen-Containing OC — 8.0 h</option>
-          <option value="pregnancy">Late Pregnancy — 10.5 h</option>
-          <option value="older">Older Adult (65+) — 5.0 h</option>
-          <option value="cirrhosis">Compensated Cirrhosis — 4.0 h</option>
-          <option value="heavy">Heavy Habitual Use — 5.0 h</option>
-        </select>
-      </div>
-      <p class="preset-range" id="preset-range">Literature range: 2.7–9.9 h</p>
-    </section>
-
-    <section class="concentration-config" aria-labelledby="conc-heading">
-      <div class="conc-copy">
-        <span class="conc-label" id="conc-heading">Estimated concentration</span>
-        <span class="conc-note">Enter body weight to display estimated plasma concentration</span>
-      </div>
-      <div class="conc-inputs">
-        <div class="conc-group">
-          <label class="form-label" for="input-weight">Body weight (kg)</label>
-          <input type="number" class="form-input conc-input" id="input-weight"
-                 min="20" max="300" step="0.1" inputmode="decimal" placeholder="70">
-        </div>
-        <div class="conc-group">
-          <label class="form-label" for="vd-select">Distribution volume</label>
-          <select class="form-input conc-input" id="vd-select">
-            <option value="0.60">Standard (0.60 L/kg)</option>
-            <option value="0.45">Obesity-adjusted (0.45 L/kg)</option>
+      <div class="settings-section preset-config" aria-labelledby="preset-heading">
+        <div class="preset-row">
+          <label class="preset-label" id="preset-heading" for="preset-select">Scenario preset</label>
+          <select class="preset-select" id="preset-select">
+            <option value="custom">Custom</option>
+            <option value="typical" selected>Typical Healthy Adult — 5.0 h</option>
+            <option value="smoker">Current Cigarette Smoker — 3.5 h</option>
+            <option value="oc">Estrogen-Containing OC — 8.0 h</option>
+            <option value="pregnancy">Late Pregnancy — 10.5 h</option>
+            <option value="older">Older Adult (65+) — 5.0 h</option>
+            <option value="cirrhosis">Compensated Cirrhosis — 4.0 h</option>
+            <option value="heavy">Heavy Habitual Use — 5.0 h</option>
           </select>
         </div>
+        <p class="preset-range" id="preset-range">Literature range: 2.7–9.9 h</p>
       </div>
-      <p class="conc-disclaimer">Model estimate of apparent distribution, not a blood measurement.</p>
+
+      <div class="settings-section halflife-config" aria-labelledby="halflife-heading">
+        <div class="halflife-copy">
+          <span class="halflife-label" id="halflife-heading">Selected half-life</span>
+          <span class="halflife-note">Default: 5 h · Reference range: 3–8 h</span>
+        </div>
+        <div class="halflife-controls">
+          <button class="halflife-btn" id="hl-dec" aria-label="Decrease half-life by 0.5 hours" type="button">&minus;</button>
+          <label for="halflife-input" class="sr-only">Half-life in hours</label>
+          <input type="number" class="halflife-input" id="halflife-input"
+                 min="0.1" step="0.1" inputmode="decimal" value="5.0"
+                 aria-describedby="halflife-heading halflife-error">
+          <span class="halflife-unit">hours</span>
+          <button class="halflife-btn" id="hl-inc" aria-label="Increase half-life by 0.5 hours" type="button">+</button>
+        </div>
+        <p class="inline-error" id="halflife-error" role="alert" hidden></p>
+      </div>
+
+      <div class="settings-section concentration-config" aria-labelledby="conc-heading">
+        <div class="conc-copy">
+          <span class="conc-label" id="conc-heading">Estimated concentration</span>
+          <span class="conc-note">Enter body weight to display estimated plasma concentration</span>
+        </div>
+        <div class="conc-inputs">
+          <div class="conc-group">
+            <label class="form-label" for="input-weight">Body weight (kg)</label>
+            <input type="number" class="form-input conc-input" id="input-weight"
+                   min="20" max="300" step="0.1" inputmode="decimal" placeholder="70">
+          </div>
+          <div class="conc-group">
+            <label class="form-label" for="vd-select">Distribution volume</label>
+            <select class="form-input conc-input" id="vd-select">
+              <option value="0.60">Standard (0.60 L/kg)</option>
+              <option value="0.45">Obesity-adjusted (0.45 L/kg)</option>
+            </select>
+          </div>
+        </div>
+        <p class="conc-disclaimer">Model estimate of apparent distribution, not a blood measurement.</p>
+      </div>
     </section>
 
     <section class="card" aria-labelledby="add-heading">
       <h2 class="card-header" id="add-heading">Add caffeine</h2>
       <form class="add-form" id="add-form" autocomplete="off" novalidate>
+        <div class="quick-add" id="quick-add" role="group" aria-label="Quick fill common drinks">
+          <button type="button" class="quick-chip" data-mg="63" data-label="Espresso">Espresso <span class="quick-chip-mg">63</span></button>
+          <button type="button" class="quick-chip" data-mg="95" data-label="Drip coffee">Drip coffee <span class="quick-chip-mg">95</span></button>
+          <button type="button" class="quick-chip" data-mg="47" data-label="Black tea">Black tea <span class="quick-chip-mg">47</span></button>
+          <button type="button" class="quick-chip" data-mg="160" data-label="Energy drink">Energy drink <span class="quick-chip-mg">160</span></button>
+          <button type="button" class="quick-chip" data-mg="34" data-label="Cola">Cola <span class="quick-chip-mg">34</span></button>
+        </div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label" for="input-amount">Amount (mg)</label>
@@ -131,7 +162,14 @@
         <button class="btn-clear" id="btn-clear-all" type="button" hidden>Clear all</button>
       </div>
       <ul class="intake-list" id="intake-list">
-        <li class="empty-message" id="empty-intakes">No intakes recorded</li>
+        <li class="empty-message" id="empty-intakes">
+          <span class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>
+            </svg>
+          </span>
+          Nothing logged yet — your intakes will appear here
+        </li>
       </ul>
     </section>
 
@@ -153,6 +191,7 @@
       </div>
       <div class="chart-container">
         <svg class="chart-svg" id="chart-svg" aria-hidden="true"></svg>
+        <div class="empty-message compact" id="chart-empty">Your decay curve will draw here</div>
       </div>
     </section>
 

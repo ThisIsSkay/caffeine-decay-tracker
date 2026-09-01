@@ -27,6 +27,7 @@
 
   var heroValue = document.getElementById("hero-value");
   var heroEmpty = document.getElementById("hero-empty");
+  var heroEmptyText = document.getElementById("hero-empty-text");
   var heroAmount = document.getElementById("hero-amount");
   var heroRange = document.getElementById("hero-range");
   var heroModel = document.getElementById("hero-model");
@@ -45,6 +46,7 @@
   var intakeList = document.getElementById("intake-list");
   var projectionList = document.getElementById("projection-list");
   var chartSvg = document.getElementById("chart-svg");
+  var chartEmpty = document.getElementById("chart-empty");
   var editModal = document.getElementById("edit-modal");
   var modalClose = document.getElementById("modal-close");
   var modalCancel = document.getElementById("modal-cancel");
@@ -267,7 +269,7 @@
       heroEmpty.hidden = false;
       heroRange.hidden = true;
       heroConcentration.hidden = true;
-      setText(heroEmpty, "Add your first intake below");
+      setText(heroEmptyText, "Log your first coffee below to see it decay in real time");
       return;
     }
 
@@ -277,7 +279,7 @@
       heroEmpty.hidden = false;
       heroRange.hidden = true;
       heroConcentration.hidden = true;
-      setText(heroEmpty, "Unable to calculate with the current saved data");
+      setText(heroEmptyText, "Unable to calculate with the current saved data");
       return;
     }
 
@@ -327,7 +329,12 @@
   function renderIntakeList() {
     var now = Date.now();
     if (entries.length === 0) {
-      intakeList.innerHTML = '<li class="empty-message" id="empty-intakes">No intakes recorded</li>';
+      intakeList.innerHTML =
+        '<li class="empty-message" id="empty-intakes">' +
+        '<span class="empty-icon" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg></span>' +
+        'Nothing logged yet — your intakes will appear here</li>';
       btnClearAll.hidden = true;
       return;
     }
@@ -355,7 +362,12 @@
         html += '<span>' + model.formatElapsed(now - entry.intakeTimestamp) + ' ago</span>';
         html += '<span class="intake-remaining">Remaining: ' + remaining.toFixed(1) + ' mg</span>';
       }
-      html += '</div></div><div class="intake-actions">';
+      html += '</div>';
+      if (!isFuture && entry.doseMg > 0) {
+        var remainingPct = Math.max(0, Math.min(100, remaining / entry.doseMg * 100));
+        html += '<div class="intake-bar"><div class="intake-bar-fill" style="width:' + remainingPct.toFixed(1) + '%"></div></div>';
+      }
+      html += '</div><div class="intake-actions">';
       html += '<button class="btn-icon" aria-label="Edit intake" data-action="edit" data-id="' + escapeHtml(entry.id) + '" type="button">&#9998;</button>';
       html += '<button class="btn-icon danger" aria-label="Delete intake" data-action="delete" data-id="' + escapeHtml(entry.id) + '" type="button">&times;</button>';
       html += '</div></li>';
@@ -367,7 +379,7 @@
   function renderProjection() {
     var now = Date.now();
     if (entries.length === 0) {
-      projectionList.innerHTML = '<div class="empty-message compact">Add intakes to see projections</div>';
+      projectionList.innerHTML = '<div class="empty-message compact">Add an intake to project the next 12 hours</div>';
       return;
     }
 
@@ -398,12 +410,24 @@
     projectionList.innerHTML = html;
   }
 
+  function setChartEmpty(isEmpty) {
+    // SVG elements lack the HTMLElement `hidden` property, so toggle the attribute.
+    if (isEmpty) {
+      chartSvg.setAttribute("hidden", "");
+    } else {
+      chartSvg.removeAttribute("hidden");
+    }
+    if (chartEmpty) chartEmpty.hidden = !isEmpty;
+  }
+
   function renderChart() {
     var now = Date.now();
     if (entries.length === 0) {
       chartSvg.innerHTML = "";
+      setChartEmpty(true);
       return;
     }
+    setChartEmpty(false);
 
     var earliest = entries[0].intakeTimestamp;
     for (var i = 1; i < entries.length; i++) {
@@ -416,6 +440,7 @@
     var data = model.generateChartData(entries, startTimestamp, endTimestamp, halfLife, 200);
     if (!data || data.length === 0) {
       chartSvg.innerHTML = "";
+      setChartEmpty(true);
       return;
     }
 
@@ -471,9 +496,13 @@
     }
 
     var yLabels = "";
+    var gridLines = "";
     var yStep = maxMg <= 200 ? 50 : maxMg <= 500 ? 100 : 200;
     for (var value = 0; value <= maxMg; value += yStep) {
       yLabels += '<text class="chart-axis-label" x="' + (padLeft - 6) + '" y="' + (y(value) + 3).toFixed(2) + '" text-anchor="end">' + value + '</text>';
+      if (value > 0) {
+        gridLines += '<line class="chart-grid-line" x1="' + padLeft + '" y1="' + y(value).toFixed(2) + '" x2="' + (padLeft + plotWidth) + '" y2="' + y(value).toFixed(2) + '"/>';
+      }
     }
 
     var doseLines = "";
@@ -485,15 +514,28 @@
       }
     }
 
+    var nowPoint = data[0];
+    for (var n = 1; n < data.length; n++) {
+      if (Math.abs(data[n].timestamp - now) < Math.abs(nowPoint.timestamp - now)) {
+        nowPoint = data[n];
+      }
+    }
+
     var nowX = x(now).toFixed(2);
     chartSvg.setAttribute("viewBox", "0 0 " + svgWidth + " " + svgHeight);
     chartSvg.innerHTML =
+      '<defs><linearGradient id="chart-area-gradient" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0" stop-color="#00e676" stop-opacity="0.22"/>' +
+      '<stop offset="1" stop-color="#00e676" stop-opacity="0.01"/>' +
+      '</linearGradient></defs>' +
+      gridLines +
       '<polygon class="chart-area" points="' + areaPoints + '"/>' +
       '<polyline class="chart-line-reference fast" points="' + fastPoints + '"/>' +
       '<polyline class="chart-line-reference slow" points="' + slowPoints + '"/>' +
       '<polyline class="chart-line" points="' + selectedPoints + '"/>' +
       doseLines +
       '<line class="chart-now-line" x1="' + nowX + '" y1="' + padTop + '" x2="' + nowX + '" y2="' + (padTop + plotHeight) + '"/>' +
+      '<circle class="chart-now-dot" cx="' + x(nowPoint.timestamp).toFixed(2) + '" cy="' + y(nowPoint.remaining).toFixed(2) + '" r="3.5"/>' +
       '<text class="chart-now-label" x="' + nowX + '" y="' + (padTop - 3) + '" text-anchor="middle">Now</text>' +
       labels + yLabels;
   }
@@ -608,6 +650,18 @@
     }
 
     return { doseMg: dose, intakeTimestamp: timestamp };
+  }
+
+  var quickAdd = document.getElementById("quick-add");
+  if (quickAdd) {
+    quickAdd.addEventListener("click", function (event) {
+      var chip = event.target.closest("[data-mg]");
+      if (!chip) return;
+      inputAmount.value = chip.getAttribute("data-mg");
+      inputLabel.value = chip.getAttribute("data-label");
+      showError(formError, "");
+      inputAmount.focus();
+    });
   }
 
   addForm.addEventListener("submit", function (event) {
